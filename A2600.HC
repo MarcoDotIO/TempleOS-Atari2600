@@ -8061,6 +8061,7 @@ U0 A2600RunFrame()
   if (!a2600_ready)
     A2600Reset;
 
+  A2600PollInput;
   A2600MindlinkFrame;
   while (!a2600_halted && a2600_frames<target && guard<60000) {
     A2600Step;
@@ -8081,7 +8082,6 @@ U0 A2600DrawIt(CTask *task,CDC *dc)
     A2600Reset;
 
   A2600DrainInputKeys;
-  A2600PollInput;
   if (a2600_last_run_jiffy<0) {
     A2600RunFrame;
     a2600_last_run_jiffy=cnts.jiffies;
