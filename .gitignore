@@ -1,0 +1,27 @@
+.DS_Store
+._*
+
+# Local TempleOS/QEMU runtime files
+*.qcow2
+*.img
+*.dmg
+*.iso
+qemu-templeos.pid
+qemu-templeos-monitor.sock
+qemu-templeos.log
+
+# User-supplied Atari ROMs and captures
+*.a26
+*.bin
+*.rom
+*.bas
+*.png
+*.ppm
+*.mp4
+
+# Python/editor noise
+__pycache__/
+*.pyc
+.venv/
+.idea/
+.vscode/
