@@ -52,6 +52,9 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CTRL_PADDLE             1
 #define A2600_CTRL_DRIVING            3
 #define A2600_CTRL_MINDLINK           7
+#define A2600_CTRL_ST_MOUSE           8
+#define A2600_CTRL_TRAKBALL           9
+#define A2600_CTRL_AMIGA_MOUSE       10
 #define A2600_CTRL_BOOSTER           12
 #define A2600_CTRL_GENESIS           13
 #define A2600_CTRL_JOY2B             14
@@ -502,6 +505,18 @@ I64 a2600_inpt_latch_mode,a2600_inpt4_latch,a2600_inpt5_latch;
 I64 a2600_analog_dump,a2600_analog_charge_start;
 I64 a2600_paddle_pos[4],a2600_paddle_charge[4],a2600_paddle_mode;
 I64 a2600_drive0_count,a2600_drive1_count;
+I64 a2600_trakball_st_v[4]={0x00,0x10,0x30,0x20};
+I64 a2600_trakball_st_h[4]={0x00,0x80,0xC0,0x40};
+I64 a2600_trakball_am_v[4]={0x00,0x80,0xA0,0x20};
+I64 a2600_trakball_am_h[4]={0x00,0x10,0x50,0x40};
+I64 a2600_trakball_tb_v[4]={0x00,0x10,0x20,0x30};
+I64 a2600_trakball_tb_h[4]={0x40,0x00,0xC0,0x80};
+I64 a2600_trakball_mode,a2600_trakball_port;
+I64 a2600_trakball_count_h,a2600_trakball_count_v;
+I64 a2600_trakball_pending_h,a2600_trakball_pending_v;
+I64 a2600_trakball_lines_h,a2600_trakball_lines_v;
+I64 a2600_trakball_scan_h,a2600_trakball_scan_v;
+I64 a2600_trakball_left,a2600_trakball_down;
 I64 a2600_left_controller,a2600_right_controller;
 I64 a2600_mindlink_pos[2],a2600_mindlink_shift[2],a2600_mindlink_pins;
 I64 a2600_joy0_mask,a2600_joy0_decay,a2600_joy1_mask,a2600_joy1_decay;
@@ -5614,6 +5629,137 @@ U0 A2600AudioUpdateHost()
   a2600_audio_freq=freq;
 }
 
+U0 A2600TrakBallClear()
+{
+  a2600_trakball_count_h=0;
+  a2600_trakball_count_v=0;
+  a2600_trakball_pending_h=0;
+  a2600_trakball_pending_v=0;
+  a2600_trakball_lines_h=1;
+  a2600_trakball_lines_v=1;
+  a2600_trakball_scan_h=0;
+  a2600_trakball_scan_v=0;
+  a2600_trakball_left=0;
+  a2600_trakball_down=0;
+}
+
+U0 A2600TrakBallPort(I64 port)
+{
+  a2600_trakball_port=port&1;
+  if (!a2600_trakball_mode)
+    a2600_trakball_mode=1;
+  if (a2600_trakball_port&1)
+    a2600_right_controller=A2600_CTRL_TRAKBALL;
+  else
+    a2600_left_controller=A2600_CTRL_TRAKBALL;
+}
+
+U0 A2600TrakBallMode(I64 mode)
+{
+  if (mode<0)
+    mode=0;
+  if (mode>3)
+    mode=3;
+  a2600_trakball_mode=mode;
+  if (mode==0) {
+    a2600_left_controller=A2600_CTRL_JS;
+    a2600_right_controller=A2600_CTRL_JS;
+  } else if (mode==1) {
+    a2600_left_controller=A2600_CTRL_TRAKBALL;
+    a2600_right_controller=A2600_CTRL_TRAKBALL;
+  } else if (mode==2) {
+    a2600_left_controller=A2600_CTRL_ST_MOUSE;
+    a2600_right_controller=A2600_CTRL_ST_MOUSE;
+  } else if (mode==3) {
+    a2600_left_controller=A2600_CTRL_AMIGA_MOUSE;
+    a2600_right_controller=A2600_CTRL_AMIGA_MOUSE;
+  }
+}
+
+U0 A2600TrakBallQueue(I64 steps_h,I64 steps_v,I64 left,I64 down,I64 lines)
+{
+  if (!a2600_trakball_mode)
+    a2600_trakball_mode=1;
+  if (steps_h<0)
+    steps_h=-steps_h;
+  if (steps_v<0)
+    steps_v=-steps_v;
+  if (lines<1)
+    lines=1;
+  a2600_trakball_pending_h=steps_h;
+  a2600_trakball_pending_v=steps_v;
+  a2600_trakball_left=left&1;
+  a2600_trakball_down=down&1;
+  a2600_trakball_lines_h=lines;
+  a2600_trakball_lines_v=lines;
+  a2600_trakball_scan_h=0;
+  a2600_trakball_scan_v=0;
+}
+
+U0 A2600TrakBallUpdate()
+{
+  I64 scan;
+
+  if (!a2600_trakball_mode)
+    return;
+  scan=a2600_scanline;
+  if (a2600_trakball_scan_h>scan)
+    a2600_trakball_scan_h=0;
+  if (a2600_trakball_scan_v>scan)
+    a2600_trakball_scan_v=0;
+  if (a2600_trakball_lines_h<1)
+    a2600_trakball_lines_h=1;
+  if (a2600_trakball_lines_v<1)
+    a2600_trakball_lines_v=1;
+
+  while (a2600_trakball_scan_h+a2600_trakball_lines_h<scan) {
+    if (a2600_trakball_pending_h>0) {
+      if (a2600_trakball_left)
+        a2600_trakball_count_h--;
+      else
+        a2600_trakball_count_h++;
+      a2600_trakball_pending_h--;
+    }
+    a2600_trakball_scan_h+=a2600_trakball_lines_h;
+  }
+
+  while (a2600_trakball_scan_v+a2600_trakball_lines_v<scan) {
+    if (a2600_trakball_pending_v>0) {
+      if (a2600_trakball_down)
+        a2600_trakball_count_v--;
+      else
+        a2600_trakball_count_v++;
+      a2600_trakball_pending_v--;
+    }
+    a2600_trakball_scan_v+=a2600_trakball_lines_v;
+  }
+
+  a2600_trakball_count_h=a2600_trakball_count_h&3;
+  a2600_trakball_count_v=a2600_trakball_count_v&3;
+}
+
+I64 A2600TrakBallPins(I64 pins)
+{
+  I64 h,v,p;
+
+  if (!a2600_trakball_mode)
+    return pins;
+  if (a2600_trakball_mode==2) {
+    h=a2600_trakball_count_h&3;
+    v=a2600_trakball_count_v&3;
+    p=a2600_trakball_st_h[h] | a2600_trakball_st_v[v];
+  } else if (a2600_trakball_mode==3) {
+    h=a2600_trakball_count_h&3;
+    v=a2600_trakball_count_v&3;
+    p=a2600_trakball_am_h[h] | a2600_trakball_am_v[v];
+  } else {
+    h=(a2600_trakball_count_h&1)*2+(a2600_trakball_left&1);
+    v=(a2600_trakball_count_v&1)*2+(a2600_trakball_down&1);
+    p=a2600_trakball_tb_h[h] | a2600_trakball_tb_v[v];
+  }
+  return (pins&0x0F) | p;
+}
+
 I64 A2600Read(I64 addr)
 {
   I64 a,r,v,old_access_active,old_access_cycle;
@@ -5659,6 +5805,8 @@ I64 A2600Read(I64 addr)
     A2600PA7Access;
     r=a&0x07;
     if (r==0) {
+      A2600TrakBallUpdate;
+      a2600_swcha=A2600TrakBallPins(a2600_swcha);
       a2600_swcha=A2600SaveKeyPins(a2600_swcha);
       v=A2600Bus(a2600_swcha);
     }
@@ -8017,6 +8165,9 @@ U0 A2600Reset()
   a2600_paddle_mode=0;
   a2600_drive0_count=0;
   a2600_drive1_count=0;
+  a2600_trakball_mode=0;
+  a2600_trakball_port=0;
+  A2600TrakBallClear;
   a2600_auto_reset=0;
   a2600_joy0_mask=0;
   a2600_joy0_decay=0;

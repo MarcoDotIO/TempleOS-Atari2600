@@ -71,6 +71,12 @@ the mounted drive shown by TempleOS.
 - Color/BW and difficulty switches: `F3` through `F8`
 - Quit: `Esc`
 
+The runner also includes the left-port CX22 Trak-Ball, ST mouse, and Amiga mouse
+quadrature pin path used by the accuracy-suite controller proofs. That path is
+currently exposed through HolyC helper calls such as `A2600TrakBallMode`,
+`A2600TrakBallPort`, and `A2600TrakBallQueue`; the default live keyboard route
+remains joystick/paddle/driving focused.
+
 For scripted QEMU input, `qemu-type.py` supports named tokens such as
 `{right@2000}`, `{p0fire}`, `{space}`, `{enter}`, and Pitfall II helpers like
 `{pitfallrightjump}`.
