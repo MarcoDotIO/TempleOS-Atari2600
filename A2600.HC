@@ -444,7 +444,7 @@ I64 a2600_wd_seg3_tab[8]={3,3,7,3,7,6,5,1};
 I64 a2600_a,a2600_x,a2600_y,a2600_sp,a2600_pc,a2600_p;
 I64 a2600_cycles,a2600_frames,a2600_visible_y,a2600_visible_active,
     a2600_scanline;
-I64 a2600_frame_scanline;
+I64 a2600_frame_scanline,a2600_last_frame_scanlines;
 I64 a2600_wsync_pending,a2600_wsync_target;
 I64 a2600_cpu_bus_active,a2600_cpu_bus_cycle;
 I64 a2600_access_cycle_active,a2600_access_cycle;
@@ -4978,6 +4978,7 @@ Bool A2600BallBit(I64 x)
 U0 A2600FinishFrame()
 {
   if (!a2600_frame_done) {
+    a2600_last_frame_scanlines=a2600_frame_scanline;
     a2600_frames++;
     a2600_frame_done=TRUE;
   }
@@ -5933,9 +5934,9 @@ U0 A2600TIAWrite(I64 tia_addr,I64 val)
         a2600_frame_done=FALSE;
       }
       if (old_vsync && !(val&0x02)) {
-        a2600_frame_scanline=0;
         a2600_vsync_frame_mode=TRUE;
         A2600FinishFrame;
+        a2600_frame_scanline=0;
       }
       break;
     case A2600_VBLANK:
@@ -5959,6 +5960,7 @@ U0 A2600TIAWrite(I64 tia_addr,I64 val)
       if (!old_vblank && a2600_vblank && !a2600_frame_done &&
             !a2600_vsync_frame_mode) {
         A2600FinishFrame;
+        a2600_frame_scanline=0;
       }
       break;
     case A2600_WSYNC:
@@ -8110,6 +8112,7 @@ U0 A2600Reset()
   a2600_visible_active=FALSE;
   a2600_scanline=0;
   a2600_frame_scanline=0;
+  a2600_last_frame_scanlines=0;
   a2600_wsync_pending=FALSE;
   a2600_wsync_target=0;
   a2600_line_x=0;
