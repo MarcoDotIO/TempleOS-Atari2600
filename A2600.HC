@@ -7884,9 +7884,13 @@ Bool A2600LoadCartPath(U8 *filename)
     if (dv->fs_type!=FSt_REDSEA && dv->fs_type!=FSt_FAT32)
       return FALSE;
   }
-  if (!FileFind(filename,,FUF_JUST_FILES))
-    return FALSE;
-  data=FileRead(filename,&size);
+  data=NULL;
+  try {
+    data=FileRead(filename,&size);
+  } catch {
+    Fs->catch_except=TRUE;
+    data=NULL;
+  }
   if (!data)
     return FALSE;
   if (size>A2600_ROM_SIZE) {
