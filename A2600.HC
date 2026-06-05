@@ -179,7 +179,7 @@ otherwise it falls back to the embedded proof ROM.
 
 #define A2600_SC_SPACE 0x39
 #define A2600_SC_ENTER 0x1C
-#define A2600_INPUT_HOLD_DECAY 12
+#define A2600_INPUT_HOLD_DECAY 24
 
 U8 a2600_rom[A2600_ROM_SIZE],a2600_ram[A2600_RAM_SIZE],
    a2600_sara[A2600_SARA_SIZE],a2600_cart_ram[A2600_CART_RAM_SIZE],
