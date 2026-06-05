@@ -5279,6 +5279,7 @@ U8 *A2600TVName()
 U0 A2600RenderSpan(I64 to_x)
 {
   I64 x,off,bg,pf,p0,p1,c0,c1,c,pc,ctrl,priority,score,m0x,m1x;
+  I64 actual_x;
   Bool play,p0on,p1on,m0on,m1on,blon;
 
   if (to_x<0)
@@ -5286,20 +5287,25 @@ U0 A2600RenderSpan(I64 to_x)
   if (to_x>A2600_FB_W)
     to_x=A2600_FB_W;
   if (to_x<a2600_line_x) {
-    A2600RenderSpan(A2600_FB_W);
-    A2600ApplyPFPending(A2600_FB_W);
-    a2600_line_x=0;
-    a2600_m_hmove_active[0]=0;
-    a2600_m_hmove_active[1]=0;
-    a2600_bl_hmove_active=0;
-    if (a2600_hmove_blank_next) {
-      a2600_hmove_blank_x=8;
-      a2600_hmove_blank_next=0;
-    } else
-      a2600_hmove_blank_x=0;
-    a2600_hmove_cycle=0;
-    A2600AdvanceVisibleScanline;
-    A2600AdvanceScanline;
+    actual_x=A2600BeamXAt(A2600AccessCycle());
+    if (actual_x>=a2600_line_x) {
+      to_x=a2600_line_x;
+    } else {
+      A2600RenderSpan(A2600_FB_W);
+      A2600ApplyPFPending(A2600_FB_W);
+      a2600_line_x=0;
+      a2600_m_hmove_active[0]=0;
+      a2600_m_hmove_active[1]=0;
+      a2600_bl_hmove_active=0;
+      if (a2600_hmove_blank_next) {
+        a2600_hmove_blank_x=8;
+        a2600_hmove_blank_next=0;
+      } else
+        a2600_hmove_blank_x=0;
+      a2600_hmove_cycle=0;
+      A2600AdvanceVisibleScanline;
+      A2600AdvanceScanline;
+    }
   }
   if (to_x<=a2600_line_x)
     return;
