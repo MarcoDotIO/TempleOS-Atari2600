@@ -29,7 +29,7 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_SARA_SIZE     128
 #define A2600_CART_RAM_SIZE 65536
 #define A2600_FB_W         160
-#define A2600_FB_H         192
+#define A2600_FB_H         384
 #define A2600_TIA_COLOR_COUNT       128
 #define A2600_PROG_SIZE     61
 #define A2600_STARPATH_LOAD_SIZE 8448
@@ -271,21 +271,21 @@ I64 a2600_stella_atarivox_right[2]={
 I64 a2600_dpc_mix_audv[8]={0,6,5,11,4,10,9,15};
 U8 a2600_tia_ntsc_pal[A2600_TIA_COLOR_COUNT]={
   0,8,8,7,7,7,15,15,
-  6,6,6,6,6,14,14,14,
-  6,6,6,6,6,14,14,14,
-  6,6,6,6,6,6,14,14,
+  0,6,6,6,6,14,14,14,
+  0,6,6,6,6,14,14,14,
+  0,6,6,6,6,6,14,14,
   4,4,4,12,12,12,13,13,
-  5,5,5,5,13,13,13,13,
-  1,1,5,5,13,13,9,9,
+  8,5,5,5,13,13,13,13,
+  8,1,5,5,13,13,9,9,
   1,1,1,9,9,9,9,9,
   1,1,1,9,9,9,9,9,
   1,1,3,3,9,9,11,11,
-  3,3,3,3,11,11,11,11,
-  2,2,3,3,10,10,11,11,
-  2,2,2,10,10,10,10,14,
-  2,2,2,10,10,14,14,14,
-  6,6,6,6,14,14,14,14,
-  6,6,6,6,14,14,14,14
+  0,3,3,3,11,11,11,11,
+  0,2,3,3,10,10,11,11,
+  0,2,2,10,10,10,10,14,
+  0,2,2,10,10,14,14,14,
+  0,6,6,6,14,14,14,14,
+  0,6,6,6,14,14,14,14
 };
 U8 a2600_tia_ntsc_r[A2600_TIA_COLOR_COUNT]={
    20, 38, 66,102,132,165,193,214,
@@ -442,7 +442,8 @@ I64 a2600_wd_seg2_tab[8]={1,2,6,2,6,7,4,5};
 I64 a2600_wd_seg3_tab[8]={3,3,7,3,7,6,5,1};
 
 I64 a2600_a,a2600_x,a2600_y,a2600_sp,a2600_pc,a2600_p;
-I64 a2600_cycles,a2600_frames,a2600_visible_y,a2600_scanline;
+I64 a2600_cycles,a2600_frames,a2600_visible_y,a2600_visible_active,
+    a2600_scanline;
 I64 a2600_frame_scanline;
 I64 a2600_wsync_pending,a2600_wsync_target;
 I64 a2600_cpu_bus_active,a2600_cpu_bus_cycle;
@@ -4988,6 +4989,18 @@ U0 A2600AdvanceScanline()
   a2600_frame_scanline++;
 }
 
+U0 A2600AdvanceVisibleScanline()
+{
+  if (!a2600_visible_active)
+    return;
+  if (a2600_visible_y<A2600_FB_H) {
+    a2600_visible_y++;
+    if (a2600_visible_y>=A2600_FB_H)
+      a2600_visible_active=FALSE;
+  } else
+    a2600_visible_active=FALSE;
+}
+
 U0 A2600LatchPrevFrame()
 {
   I64 i;
@@ -5179,11 +5192,7 @@ U0 A2600RenderSpan(I64 to_x)
     } else
       a2600_hmove_blank_x=0;
     a2600_hmove_cycle=0;
-    if (!a2600_vblank && a2600_visible_y<A2600_FB_H) {
-      a2600_visible_y++;
-      if (a2600_visible_y>=A2600_FB_H && !a2600_vsync_frame_mode)
-        A2600FinishFrame;
-    }
+    A2600AdvanceVisibleScanline;
     A2600AdvanceScanline;
   }
   if (to_x<=a2600_line_x)
@@ -5210,7 +5219,7 @@ U0 A2600RenderSpan(I64 to_x)
     m1x=A2600WrapX(a2600_p1_x+
           A2600MissileLockOffset(a2600_tia[A2600_NUSIZ1]));
 
-  if (a2600_visible_y<A2600_FB_H) {
+  if (a2600_visible_active && a2600_visible_y<A2600_FB_H) {
     off=a2600_visible_y*A2600_FB_W;
     if (a2600_vblank) {
       for (x=a2600_line_x;x<to_x;x++)
@@ -5307,11 +5316,7 @@ U0 A2600RenderScanline()
   } else
     a2600_hmove_blank_x=0;
   a2600_hmove_cycle=0;
-  if (!a2600_vblank && a2600_visible_y<A2600_FB_H) {
-    a2600_visible_y++;
-    if (a2600_visible_y>=A2600_FB_H && !a2600_vsync_frame_mode)
-      A2600FinishFrame;
-  }
+  A2600AdvanceVisibleScanline;
   A2600AdvanceScanline;
 }
 
@@ -5319,7 +5324,7 @@ U0 A2600RSync()
 {
   I64 x,off;
 
-  if (a2600_visible_y<A2600_FB_H) {
+  if (a2600_visible_active && a2600_visible_y<A2600_FB_H) {
     off=a2600_visible_y*A2600_FB_W;
     for (x=a2600_line_x;x<A2600_FB_W;x++)
       a2600_fb[off+x]=0;
@@ -5332,11 +5337,7 @@ U0 A2600RSync()
   } else
     a2600_hmove_blank_x=0;
   a2600_hmove_cycle=0;
-  if (!a2600_vblank && a2600_visible_y<A2600_FB_H) {
-    a2600_visible_y++;
-    if (a2600_visible_y>=A2600_FB_H && !a2600_vsync_frame_mode)
-      A2600FinishFrame;
-  }
+  A2600AdvanceVisibleScanline;
   A2600AdvanceScanline;
 }
 
@@ -5912,6 +5913,7 @@ U0 A2600TIAWrite(I64 tia_addr,I64 val)
   }
 
   if (r==A2600_CTRLPF && render_x>=79 && !a2600_vblank &&
+        a2600_visible_active &&
         a2600_visible_y<A2600_FB_H)
     A2600LatchPFReflectMid;
 
@@ -5942,6 +5944,7 @@ U0 A2600TIAWrite(I64 tia_addr,I64 val)
       a2600_vblank=val&0x02;
       if (!a2600_vblank && (old_vblank || a2600_visible_y>=A2600_FB_H)) {
         A2600LatchPrevFrame;
+        a2600_visible_active=TRUE;
         a2600_visible_y=0;
         a2600_scanline=0;
         a2600_line_x=0;
@@ -8104,6 +8107,7 @@ U0 A2600Reset()
   a2600_access_cycle=0;
   a2600_frames=0;
   a2600_visible_y=0;
+  a2600_visible_active=FALSE;
   a2600_scanline=0;
   a2600_frame_scanline=0;
   a2600_wsync_pending=FALSE;
@@ -8268,7 +8272,7 @@ U0 A2600DrawIt(CTask *task,CDC *dc)
 
   sy=(task->pix_height-86)/A2600_FB_H;
   if (sy<1) sy=1;
-  if (sy>2) sy=2;
+  if (sy>1) sy=1;
   sx=(task->pix_width-24)/A2600_FB_W;
   if (sx<1) sx=1;
   if (sx>4) sx=4;
