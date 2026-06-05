@@ -511,7 +511,7 @@ I64 a2600_trakball_am_v[4]={0x00,0x80,0xA0,0x20};
 I64 a2600_trakball_am_h[4]={0x00,0x10,0x50,0x40};
 I64 a2600_trakball_tb_v[4]={0x00,0x10,0x20,0x30};
 I64 a2600_trakball_tb_h[4]={0x40,0x00,0xC0,0x80};
-I64 a2600_trakball_mode,a2600_trakball_port;
+I64 a2600_trakball_mode,a2600_trakball_port,a2600_trakball_both;
 I64 a2600_trakball_count_h,a2600_trakball_count_v;
 I64 a2600_trakball_pending_h,a2600_trakball_pending_v;
 I64 a2600_trakball_lines_h,a2600_trakball_lines_v;
@@ -5662,17 +5662,25 @@ U0 A2600TrakBallMode(I64 mode)
     mode=3;
   a2600_trakball_mode=mode;
   if (mode==0) {
-    a2600_left_controller=A2600_CTRL_JS;
-    a2600_right_controller=A2600_CTRL_JS;
+    if (a2600_trakball_port&1)
+      a2600_right_controller=A2600_CTRL_JS;
+    else
+      a2600_left_controller=A2600_CTRL_JS;
   } else if (mode==1) {
-    a2600_left_controller=A2600_CTRL_TRAKBALL;
-    a2600_right_controller=A2600_CTRL_TRAKBALL;
+    if (a2600_trakball_port&1)
+      a2600_right_controller=A2600_CTRL_TRAKBALL;
+    else
+      a2600_left_controller=A2600_CTRL_TRAKBALL;
   } else if (mode==2) {
-    a2600_left_controller=A2600_CTRL_ST_MOUSE;
-    a2600_right_controller=A2600_CTRL_ST_MOUSE;
+    if (a2600_trakball_port&1)
+      a2600_right_controller=A2600_CTRL_ST_MOUSE;
+    else
+      a2600_left_controller=A2600_CTRL_ST_MOUSE;
   } else if (mode==3) {
-    a2600_left_controller=A2600_CTRL_AMIGA_MOUSE;
-    a2600_right_controller=A2600_CTRL_AMIGA_MOUSE;
+    if (a2600_trakball_port&1)
+      a2600_right_controller=A2600_CTRL_AMIGA_MOUSE;
+    else
+      a2600_left_controller=A2600_CTRL_AMIGA_MOUSE;
   }
 }
 
@@ -5757,6 +5765,10 @@ I64 A2600TrakBallPins(I64 pins)
     v=(a2600_trakball_count_v&1)*2+(a2600_trakball_down&1);
     p=a2600_trakball_tb_h[h] | a2600_trakball_tb_v[v];
   }
+  if (a2600_trakball_both)
+    return (pins&0x00) | p | (p>>4);
+  if (a2600_trakball_port&1)
+    return (pins&0xF0) | (p>>4);
   return (pins&0x0F) | p;
 }
 
@@ -8167,6 +8179,7 @@ U0 A2600Reset()
   a2600_drive1_count=0;
   a2600_trakball_mode=0;
   a2600_trakball_port=0;
+  a2600_trakball_both=0;
   A2600TrakBallClear;
   a2600_auto_reset=0;
   a2600_joy0_mask=0;
