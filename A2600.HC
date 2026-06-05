@@ -41,6 +41,17 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_PADDLE_MIN_CYCLES     (1*76)
 #define A2600_PADDLE_CHARGE_CYCLES (379*76)
 #define A2600_PADDLE_STEP           8
+#define A2600_FM_WAIT_VSYNC_START     0
+#define A2600_FM_WAIT_VSYNC_END       1
+#define A2600_FM_WAIT_FRAME_START     2
+#define A2600_FM_FRAME                3
+#define A2600_FM_NTSC_LINES         262
+#define A2600_FM_PAL_LINES          312
+#define A2600_FM_NTSC_YSTART         23
+#define A2600_FM_PAL_YSTART          32
+#define A2600_FM_NTSC_HEIGHT        228
+#define A2600_FM_PAL_HEIGHT         274
+#define A2600_FM_MAX_VSYNC_LINES     50
 #define A2600_Z26_CRC32_REV   0xA0000001
 #define A2600_TV_NTSC                 0
 #define A2600_TV_PAL                  1
@@ -447,6 +458,7 @@ I64 a2600_a,a2600_x,a2600_y,a2600_sp,a2600_pc,a2600_p;
 I64 a2600_cycles,a2600_frames,a2600_visible_y,a2600_visible_active,
     a2600_scanline;
 I64 a2600_frame_scanline,a2600_last_frame_scanlines;
+I64 a2600_frame_state,a2600_frame_line_state,a2600_frame_vsync_lines;
 I64 a2600_wsync_pending,a2600_wsync_target;
 I64 a2600_cpu_bus_active,a2600_cpu_bus_cycle;
 I64 a2600_access_cycle_active,a2600_access_cycle;
@@ -543,7 +555,12 @@ Bool a2600_vsync_frame_mode=FALSE;
 Bool a2600_ext_cart=FALSE,a2600_cart_super=FALSE;
 I64 a2600_last_run_jiffy=-1;
 
-I64 A2600AccessCycle();
+I64 A2600AccessCycle()
+{
+  if (a2600_access_cycle_active)
+    return a2600_access_cycle;
+  return a2600_cycles;
+}
 
 U0 A2600ClearFB()
 {
@@ -1033,13 +1050,6 @@ Bool A2600SCJAM()
   return FALSE;
 }
 
-I64 A2600AccessCycle()
-{
-  if (a2600_access_cycle_active)
-    return a2600_access_cycle;
-  return a2600_cycles;
-}
-
 U0 A2600WDSetBank(I64 bank)
 {
   bank=bank&7;
@@ -1309,12 +1319,63 @@ U0 A2600CartResetBanks()
     a2600_bank=0;
 }
 
-U0 A2600MZHot(I64 a);
-U0 A2600MZTEHot(I64 a);
-U0 A2600UAHot(I64 a);
-U0 A2600MDMHot(I64 a);
-U0 A2600TVBoyHot(I64 a);
-U0 A2600WDMaybeSwitch();
+U0 A2600MZHot(I64 a)
+{
+  I64 hot;
+
+  if (a2600_cart_type!=A2600_CART_0FA0)
+    return;
+
+  hot=(a&0x0FFF)&0x16E0;
+  if (hot==0x06A0)
+    a2600_bank=0;
+  else if (hot==0x06C0)
+    a2600_bank=1;
+}
+
+U0 A2600MZTEHot(I64 a)
+{
+  I64 off,b;
+
+  if (a2600_cart_type!=A2600_CART_03E0)
+    return;
+
+  if (a&0x1000)
+    return;
+
+  off=a&0x0FFF;
+  if (off<0x0380 || off>0x03FF)
+    return;
+
+  b=off&7;
+  if (!(off&0x10))
+    a2600_cart_seg0=b;
+  if (!(off&0x20))
+    a2600_cart_seg1=b;
+  if (!(off&0x40))
+    a2600_cart_seg2=b;
+}
+
+U0 A2600UAHot(I64 a)
+{
+  I64 hot;
+
+  if (a2600_cart_type!=A2600_CART_UA && a2600_cart_type!=A2600_CART_UASW)
+    return;
+
+  hot=a&0x1260;
+  if (hot==0x0220) {
+    if (a2600_cart_type==A2600_CART_UASW)
+      a2600_bank=1;
+    else
+      a2600_bank=0;
+  } else if (hot==0x0240) {
+    if (a2600_cart_type==A2600_CART_UASW)
+      a2600_bank=0;
+    else
+      a2600_bank=1;
+  }
+}
 
 U0 A2600CartHot(I64 a)
 {
@@ -1468,43 +1529,6 @@ U0 A2600CartHot(I64 a)
     if (hot>=0x1FF4 && hot<=0x1FFB)
       a2600_bank=hot-0x1FF4;
   }
-}
-
-U0 A2600MZHot(I64 a)
-{
-  I64 hot;
-
-  if (a2600_cart_type!=A2600_CART_0FA0)
-    return;
-
-  hot=(a&0x0FFF)&0x16E0;
-  if (hot==0x06A0)
-    a2600_bank=0;
-  else if (hot==0x06C0)
-    a2600_bank=1;
-}
-
-U0 A2600MZTEHot(I64 a)
-{
-  I64 off,b;
-
-  if (a2600_cart_type!=A2600_CART_03E0)
-    return;
-
-  if (a&0x1000)
-    return;
-
-  off=a&0x0FFF;
-  if (off<0x0380 || off>0x03FF)
-    return;
-
-  b=off&7;
-  if (!(off&0x10))
-    a2600_cart_seg0=b;
-  if (!(off&0x20))
-    a2600_cart_seg1=b;
-  if (!(off&0x40))
-    a2600_cart_seg2=b;
 }
 
 U0 A2600SBHot(I64 a)
@@ -1745,27 +1769,6 @@ U0 A26004A50Access(I64 a,I64 value)
 
   a2600_4a50_last_data=value&0xFF;
   a2600_4a50_last_addr=addr;
-}
-
-U0 A2600UAHot(I64 a)
-{
-  I64 hot;
-
-  if (a2600_cart_type!=A2600_CART_UA && a2600_cart_type!=A2600_CART_UASW)
-    return;
-
-  hot=a&0x1260;
-  if (hot==0x0220) {
-    if (a2600_cart_type==A2600_CART_UASW)
-      a2600_bank=1;
-    else
-      a2600_bank=0;
-  } else if (hot==0x0240) {
-    if (a2600_cart_type==A2600_CART_UASW)
-      a2600_bank=0;
-    else
-      a2600_bank=1;
-  }
 }
 
 I64 A2600WDCycle()
@@ -3545,7 +3548,18 @@ U0 A2600NoteCollisions(Bool play,Bool p0on,Bool p1on,
     a2600_coll[7]=a2600_coll[7] | 0x40;
 }
 
-I64 A2600SaveKeyPins(I64 pins);
+I64 A2600SaveKeyPins(I64 pins)
+{
+  if (a2600_right_controller==A2600_CTRL_SAVEKEY ||
+        a2600_right_controller==A2600_CTRL_ATARIVOX) {
+    pins=pins&0xFB;
+    if (a2600_savekey_mdat && a2600_savekey_sdat)
+      pins=pins|0x04;
+    if (a2600_right_controller==A2600_CTRL_ATARIVOX)
+      pins=pins|0x03;
+  }
+  return pins;
+}
 
 Bool A2600ControllerIsMindlink(I64 ctl)
 {
@@ -4123,18 +4137,6 @@ U0 A2600SaveKeyUpdatePins()
     A2600SaveKeyClock(scl);
   if ((sda!=0)!=(a2600_savekey_mdat!=0))
     A2600SaveKeyData(sda);
-}
-
-I64 A2600SaveKeyPins(I64 pins)
-{
-  if (A2600SaveKeyActive()) {
-    pins=pins&0xFB;
-    if (a2600_savekey_mdat && a2600_savekey_sdat)
-      pins=pins|0x04;
-    if (A2600AtariVoxActive())
-      pins=pins|0x03;
-  }
-  return pins;
 }
 
 U0 A2600SetControllerDefaults()
@@ -4986,10 +4988,119 @@ U0 A2600FinishFrame()
   }
 }
 
+U0 A2600StartVisibleFrame()
+{
+  I64 i;
+
+  for (i=0;i<A2600_FB_W*A2600_FB_H;i++)
+    a2600_prev_fb[i]=a2600_fb[i];
+  a2600_visible_active=TRUE;
+  a2600_visible_y=0;
+  a2600_scanline=0;
+  a2600_line_x=0;
+  a2600_hmove_cycle=0;
+  a2600_m_hmove_active[0]=0;
+  a2600_m_hmove_active[1]=0;
+  a2600_hmove_blank_x=0;
+  a2600_hmove_blank_next=0;
+}
+
+U0 A2600StopVisibleFrame()
+{
+  a2600_visible_active=FALSE;
+}
+
+I64 A2600FrameExpectedLines()
+{
+  if (a2600_tv_format==A2600_TV_PAL ||
+        a2600_tv_format==A2600_TV_SECAM ||
+        a2600_tv_format==A2600_TV_NTSC50)
+    return A2600_FM_PAL_LINES;
+  return A2600_FM_NTSC_LINES;
+}
+
+I64 A2600FrameYStart()
+{
+  if (a2600_tv_format==A2600_TV_PAL ||
+        a2600_tv_format==A2600_TV_SECAM ||
+        a2600_tv_format==A2600_TV_NTSC50)
+    return A2600_FM_PAL_YSTART;
+  return A2600_FM_NTSC_YSTART;
+}
+
+I64 A2600FrameHeight()
+{
+  if (a2600_tv_format==A2600_TV_PAL ||
+        a2600_tv_format==A2600_TV_SECAM ||
+        a2600_tv_format==A2600_TV_NTSC50)
+    return A2600_FM_PAL_HEIGHT;
+  return A2600_FM_NTSC_HEIGHT;
+}
+
+U0 A2600FrameSetState(I64 state)
+{
+  I64 old_state;
+
+  if (a2600_frame_state==state)
+    return;
+  old_state=a2600_frame_state;
+  if (old_state==A2600_FM_FRAME && state!=A2600_FM_FRAME)
+    A2600StopVisibleFrame;
+  a2600_frame_state=state;
+  a2600_frame_line_state=0;
+  if (state==A2600_FM_WAIT_FRAME_START) {
+    A2600FinishFrame;
+    a2600_frame_scanline=0;
+    a2600_frame_vsync_lines=0;
+  } else if (state==A2600_FM_FRAME) {
+    A2600StartVisibleFrame;
+    a2600_frame_vsync_lines=0;
+    a2600_frame_done=FALSE;
+  }
+}
+
+U0 A2600FrameSetVsync(Bool on)
+{
+  if (on)
+    A2600FrameSetState(A2600_FM_WAIT_VSYNC_END);
+  else if (a2600_frame_state==A2600_FM_WAIT_VSYNC_END)
+    A2600FrameSetState(A2600_FM_WAIT_FRAME_START);
+}
+
+U0 A2600FrameNextLine()
+{
+  a2600_frame_line_state++;
+  switch (a2600_frame_state) {
+    case A2600_FM_WAIT_VSYNC_START:
+      if (a2600_frame_scanline>A2600FrameExpectedLines()-3 || !a2600_frames) {
+        if (a2600_vblank || a2600_frame_scanline>A2600_FM_PAL_LINES*2)
+          a2600_frame_vsync_lines++;
+      }
+      if (a2600_frame_vsync_lines>A2600_FM_MAX_VSYNC_LINES)
+        A2600FrameSetState(A2600_FM_WAIT_FRAME_START);
+      break;
+    case A2600_FM_WAIT_VSYNC_END:
+      if (a2600_vblank || a2600_frame_scanline>A2600_FM_PAL_LINES*2)
+        a2600_frame_vsync_lines++;
+      if (a2600_frame_vsync_lines>A2600_FM_MAX_VSYNC_LINES)
+        A2600FrameSetState(A2600_FM_WAIT_FRAME_START);
+      break;
+    case A2600_FM_WAIT_FRAME_START:
+      if (a2600_frame_line_state>=A2600FrameYStart())
+        A2600FrameSetState(A2600_FM_FRAME);
+      break;
+    case A2600_FM_FRAME:
+      if (a2600_frame_line_state>=A2600FrameHeight())
+        A2600FrameSetState(A2600_FM_WAIT_VSYNC_START);
+      break;
+  }
+}
+
 U0 A2600AdvanceScanline()
 {
   a2600_scanline++;
   a2600_frame_scanline++;
+  A2600FrameNextLine;
 }
 
 U0 A2600AdvanceVisibleScanline()
@@ -5002,14 +5113,6 @@ U0 A2600AdvanceVisibleScanline()
       a2600_visible_active=FALSE;
   } else
     a2600_visible_active=FALSE;
-}
-
-U0 A2600LatchPrevFrame()
-{
-  I64 i;
-
-  for (i=0;i<A2600_FB_W*A2600_FB_H;i++)
-    a2600_prev_fb[i]=a2600_fb[i];
 }
 
 I64 A2600PhosphorPixel(I64 off)
@@ -5934,30 +6037,21 @@ U0 A2600TIAWrite(I64 tia_addr,I64 val)
       if ((val&0x02) && !old_vsync) {
         a2600_vsync_frame_mode=TRUE;
         a2600_frame_done=FALSE;
+        A2600FrameSetVsync(TRUE);
       }
       if (old_vsync && !(val&0x02)) {
         a2600_vsync_frame_mode=TRUE;
-        A2600FinishFrame;
-        a2600_frame_scanline=0;
+        A2600FrameSetVsync(FALSE);
       }
       break;
     case A2600_VBLANK:
       A2600AnalogVBlank(val);
       A2600InputLatchVBlank(val);
       a2600_vblank=val&0x02;
-      if (!a2600_vblank && (old_vblank || a2600_visible_y>=A2600_FB_H)) {
-        A2600LatchPrevFrame;
-        a2600_visible_active=TRUE;
-        a2600_visible_y=0;
-        a2600_scanline=0;
-        a2600_line_x=0;
-        a2600_hmove_cycle=0;
-        a2600_m_hmove_active[0]=0;
-        a2600_m_hmove_active[1]=0;
-        a2600_hmove_blank_x=0;
-        a2600_hmove_blank_next=0;
-        if (!a2600_vsync_frame_mode)
-          a2600_frame_done=FALSE;
+      if (!a2600_vblank && !a2600_vsync_frame_mode &&
+            (old_vblank || a2600_visible_y>=A2600_FB_H)) {
+        A2600StartVisibleFrame;
+        a2600_frame_done=FALSE;
       }
       if (!old_vblank && a2600_vblank && !a2600_frame_done &&
             !a2600_vsync_frame_mode) {
@@ -8115,6 +8209,9 @@ U0 A2600Reset()
   a2600_scanline=0;
   a2600_frame_scanline=0;
   a2600_last_frame_scanlines=0;
+  a2600_frame_state=A2600_FM_WAIT_VSYNC_START;
+  a2600_frame_line_state=0;
+  a2600_frame_vsync_lines=0;
   a2600_wsync_pending=FALSE;
   a2600_wsync_target=0;
   a2600_line_x=0;
@@ -8284,8 +8381,6 @@ U0 A2600DrawIt(CTask *task,CDC *dc)
   if (view_h>A2600_FB_H)
     view_h=A2600_FB_H;
   view_y0=A2600_VIEW_Y0;
-  if (a2600_last_frame_scanlines>320)
-    view_y0=A2600_FB_H-view_h;
   if (view_y0<0)
     view_y0=0;
   if (view_y0+view_h>A2600_FB_H)
