@@ -8244,6 +8244,10 @@ U0 A2600RunFrame()
   while (!a2600_halted && a2600_frames<target && guard<60000) {
     A2600Step;
     guard++;
+    if (!(guard&0xFF)) {
+      A2600DrainInputKeys;
+      A2600PollInput(FALSE);
+    }
   }
 
   if (guard>=60000) {
@@ -8280,6 +8284,8 @@ U0 A2600DrawIt(CTask *task,CDC *dc)
   if (view_h>A2600_FB_H)
     view_h=A2600_FB_H;
   view_y0=A2600_VIEW_Y0;
+  if (a2600_last_frame_scanlines>320)
+    view_y0=A2600_FB_H-view_h;
   if (view_y0<0)
     view_y0=0;
   if (view_y0+view_h>A2600_FB_H)
