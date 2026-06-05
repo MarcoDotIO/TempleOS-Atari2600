@@ -30,7 +30,7 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CART_RAM_SIZE 65536
 #define A2600_FB_W         160
 #define A2600_FB_H         384
-#define A2600_VIEW_Y0      8
+#define A2600_VIEW_Y0      0
 #define A2600_VIEW_H       228
 #define A2600_TIA_COLOR_COUNT       128
 #define A2600_PROG_SIZE     61
@@ -5010,6 +5010,14 @@ U0 A2600StopVisibleFrame()
   a2600_visible_active=FALSE;
 }
 
+U0 A2600LatchPrevFrame()
+{
+  I64 i;
+
+  for (i=0;i<A2600_FB_W*A2600_FB_H;i++)
+    a2600_prev_fb[i]=a2600_fb[i];
+}
+
 I64 A2600FrameExpectedLines()
 {
   if (a2600_tv_format==A2600_TV_PAL ||
@@ -5100,7 +5108,6 @@ U0 A2600AdvanceScanline()
 {
   a2600_scanline++;
   a2600_frame_scanline++;
-  A2600FrameNextLine;
 }
 
 U0 A2600AdvanceVisibleScanline()
@@ -5289,6 +5296,7 @@ U0 A2600RenderSpan(I64 to_x)
   if (to_x<a2600_line_x) {
     actual_x=A2600BeamXAt(A2600AccessCycle());
     if (actual_x>=a2600_line_x) {
+      A2600RenderSpan(actual_x);
       to_x=a2600_line_x;
     } else {
       A2600RenderSpan(A2600_FB_W);
@@ -6043,21 +6051,30 @@ U0 A2600TIAWrite(I64 tia_addr,I64 val)
       if ((val&0x02) && !old_vsync) {
         a2600_vsync_frame_mode=TRUE;
         a2600_frame_done=FALSE;
-        A2600FrameSetVsync(TRUE);
       }
       if (old_vsync && !(val&0x02)) {
         a2600_vsync_frame_mode=TRUE;
-        A2600FrameSetVsync(FALSE);
+        A2600FinishFrame;
+        a2600_frame_scanline=0;
       }
       break;
     case A2600_VBLANK:
       A2600AnalogVBlank(val);
       A2600InputLatchVBlank(val);
       a2600_vblank=val&0x02;
-      if (!a2600_vblank && !a2600_vsync_frame_mode &&
-            (old_vblank || a2600_visible_y>=A2600_FB_H)) {
-        A2600StartVisibleFrame;
-        a2600_frame_done=FALSE;
+      if (!a2600_vblank && (old_vblank || a2600_visible_y>=A2600_FB_H)) {
+        A2600LatchPrevFrame;
+        a2600_visible_active=TRUE;
+        a2600_visible_y=0;
+        a2600_scanline=0;
+        a2600_line_x=0;
+        a2600_hmove_cycle=0;
+        a2600_m_hmove_active[0]=0;
+        a2600_m_hmove_active[1]=0;
+        a2600_hmove_blank_x=0;
+        a2600_hmove_blank_next=0;
+        if (!a2600_vsync_frame_mode)
+          a2600_frame_done=FALSE;
       }
       if (!old_vblank && a2600_vblank && !a2600_frame_done &&
             !a2600_vsync_frame_mode) {
