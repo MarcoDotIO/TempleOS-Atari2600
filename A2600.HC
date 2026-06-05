@@ -30,6 +30,8 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CART_RAM_SIZE 65536
 #define A2600_FB_W         160
 #define A2600_FB_H         384
+#define A2600_VIEW_Y0      8
+#define A2600_VIEW_H       228
 #define A2600_TIA_COLOR_COUNT       128
 #define A2600_PROG_SIZE     61
 #define A2600_STARPATH_LOAD_SIZE 8448
@@ -8236,6 +8238,7 @@ U0 A2600RunFrame()
   if (!a2600_ready)
     A2600Reset;
 
+  A2600DrainInputKeys;
   A2600PollInput;
   A2600MindlinkFrame;
   while (!a2600_halted && a2600_frames<target && guard<60000) {
@@ -8251,7 +8254,7 @@ U0 A2600RunFrame()
 
 U0 A2600DrawIt(CTask *task,CDC *dc)
 {
-  I64 x,y,x2,c,sx,sy,left,top,off,w,h,frames_run,rate;
+  I64 x,y,x2,c,sx,sy,left,top,off,w,h,frames_run,rate,view_h,view_y0,scale;
 
   if (!a2600_ready)
     A2600Reset;
@@ -8273,14 +8276,25 @@ U0 A2600DrawIt(CTask *task,CDC *dc)
       a2600_last_run_jiffy=cnts.jiffies;
   }
 
-  sy=(task->pix_height-86)/A2600_FB_H;
-  if (sy<1) sy=1;
-  if (sy>1) sy=1;
-  sx=(task->pix_width-24)/A2600_FB_W;
-  if (sx<1) sx=1;
-  if (sx>4) sx=4;
+  view_h=A2600_VIEW_H;
+  if (view_h>A2600_FB_H)
+    view_h=A2600_FB_H;
+  view_y0=A2600_VIEW_Y0;
+  if (view_y0<0)
+    view_y0=0;
+  if (view_y0+view_h>A2600_FB_H)
+    view_y0=A2600_FB_H-view_h;
+  scale=(task->pix_height-86)/view_h;
+  if ((task->pix_width-24)/(A2600_FB_W*2)<scale)
+    scale=(task->pix_width-24)/(A2600_FB_W*2);
+  if (scale<1)
+    scale=1;
+  if (scale>3)
+    scale=3;
+  sy=scale;
+  sx=scale*2;
   w=A2600_FB_W*sx;
-  h=A2600_FB_H*sy;
+  h=view_h*sy;
   left=(task->pix_width-w)>>1;
   top=85;
 
@@ -8292,8 +8306,8 @@ U0 A2600DrawIt(CTask *task,CDC *dc)
   GrRect(dc,left-6,top-6,4,h+12);
   GrRect(dc,left+w+2,top-6,4,h+12);
 
-  for (y=0;y<A2600_FB_H;y++) {
-    off=y*A2600_FB_W;
+  for (y=0;y<view_h;y++) {
+    off=(view_y0+y)*A2600_FB_W;
     x=0;
     while (x<A2600_FB_W) {
       c=A2600PhosphorPixel(off+x);
