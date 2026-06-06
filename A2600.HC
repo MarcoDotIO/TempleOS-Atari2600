@@ -4636,10 +4636,13 @@ Bool A2600SaveKeySave()
     return FALSE;
   ok=FALSE;
   try {
-    if (FileFind(a2600_savekey_path,,FUF_JUST_FILES))
-      Del(a2600_savekey_path);
     ok=FileWrite(a2600_savekey_path,a2600_savekey_eeprom,
           A2600_SAVEKEY_SIZE)>0;
+    if (!ok && FileFind(a2600_savekey_path,,FUF_JUST_FILES)) {
+      Del(a2600_savekey_path);
+      ok=FileWrite(a2600_savekey_path,a2600_savekey_eeprom,
+            A2600_SAVEKEY_SIZE)>0;
+    }
   } catch {
     Fs->catch_except=TRUE;
   }
