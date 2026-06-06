@@ -37,6 +37,13 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_STARPATH_LOAD_SIZE 8448
 #define A2600_FA2_READ_DELAY_CYCLES 596
 #define A2600_FA2_WRITE_DELAY_CYCLES 120477
+#define A2600_CM_CAS_MIN_SIZE        1540
+#define A2600_CM_CAS_MAX_SIZE        2052
+#define A2600_CM_CAS_SYNC_BYTES       943
+#define A2600_CM_CAS_FRAME_BITS        13
+#define A2600_CM_SAVE_MIN_FSK_GAP     150
+#define A2600_CM_SAVE_MAX_CALIB_GAP   800
+#define A2600_CM_SAVE_TIMEOUT_CYCLES 60000
 #define A2600_SCORE_SPLIT_X 80
 #define A2600_PADDLE_MIN_CYCLES     (1*76)
 #define A2600_PADDLE_CHARGE_CYCLES (379*76)
@@ -64,6 +71,8 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CTRL_JS                 0
 #define A2600_CTRL_PADDLE             1
 #define A2600_CTRL_DRIVING            3
+#define A2600_CTRL_COMPUMATE          5
+#define A2600_CTRL_KIDVID             6
 #define A2600_CTRL_MINDLINK           7
 #define A2600_CTRL_ST_MOUSE           8
 #define A2600_CTRL_TRAKBALL           9
@@ -71,9 +80,19 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CTRL_BOOSTER           12
 #define A2600_CTRL_GENESIS           13
 #define A2600_CTRL_JOY2B             14
+#define A2600_CTRL_QUADTARI          15
 #define A2600_CTRL_SAVEKEY           16
 #define A2600_CTRL_ATARIVOX          17
+#define A2600_QUADTARI_STABLE_CYCLES 76
 
+#define A2600_KIDVID_SMURFS       0x44
+#define A2600_KIDVID_BBEARS       0x48
+#define A2600_KIDVID_BLOCK_BYTES     6
+#define A2600_KIDVID_BLOCK_BITS     48
+#define A2600_KIDVID_DATA00_BITS    96
+#define A2600_KIDVID_PAUSE_BITS    288
+#define A2600_KIDVID_END_BITS      336
+#define A2600_KIDVID_NO_WAV_DELAY   32
 #define A2600_SAVEKEY_SIZE        32768
 #define A2600_SAVEKEY_PAGE           64
 #define A2600_SAVEKEY_PACKET_MAX    128
@@ -123,6 +142,7 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CART_MDM 30
 #define A2600_CART_TVBOY 31
 #define A2600_CART_FA2 32
+#define A2600_CART_CM  33
 
 #define A2600_F_C 0x01
 #define A2600_F_Z 0x02
@@ -200,6 +220,8 @@ U8 a2600_rom[A2600_ROM_SIZE],a2600_ram[A2600_RAM_SIZE],
    a2600_savekey_eeprom[A2600_SAVEKEY_SIZE],
    a2600_savekey_path[A2600_CART_PATH_MAX],
    a2600_savekey_packet[A2600_SAVEKEY_PACKET_MAX],
+   a2600_compumate_cas[A2600_CM_CAS_MAX_SIZE],
+   a2600_compumate_cas_path[A2600_CART_PATH_MAX],
    a2600_tia[64],a2600_coll[8],
    a2600_fb[A2600_FB_W*A2600_FB_H],a2600_prev_fb[A2600_FB_W*A2600_FB_H];
 
@@ -231,6 +253,17 @@ I64 a2600_deep_hmove_end[16]={
 };
 
 I64 a2600_driving_table[4]={0x0F,0x0D,0x0C,0x0E};
+I64 a2600_kidvid_blocks[6]={42,23,37,102,120,102};
+U8 a2600_kidvid_data[48]={
+  0x7B,0x1E,0xC6,0x31,0xEC,0x60,
+  0x7B,0x1E,0xC6,0x3D,0x8C,0x60,
+  0xF6,0x31,0x8C,0x63,0x18,0xC0,
+  0xF6,0x31,0x8C,0x63,0x18,0xF0,
+  0xF6,0x31,0x8C,0x63,0x1E,0xC0,
+  0xF6,0x31,0x8C,0x63,0x1E,0xF0,
+  0x3F,0xF0,0x00,0x00,0x00,0x00,
+  0xF7,0xB1,0x8C,0x63,0x18,0xC0
+};
 I64 a2600_stella_phosphor_crc[156]={
   0x00BA2D68,0x00E44527,0x02969F95,0x05A357E7,0x06E5D652,0x0A0C9D67,
   0x0E80B949,0x12C652B2,0x1448E3D2,0x15D8E02B,0x16B1A362,0x16D29A52,
@@ -517,7 +550,7 @@ I64 a2600_pf_reflect_latch,a2600_pf_reflect_mid_latched;
 I64 a2600_swcha,a2600_swchb,a2600_swchb_base,a2600_swcha_out,a2600_swchb_out;
 I64 a2600_fire0,a2600_fire1,a2600_auto_reset;
 I64 a2600_inpt_latch_mode,a2600_inpt4_latch,a2600_inpt5_latch;
-I64 a2600_analog_dump,a2600_analog_charge_start;
+I64 a2600_analog_dump,a2600_analog_charge_start,a2600_quadtari_dump_cycle;
 I64 a2600_paddle_pos[4],a2600_paddle_charge[4],a2600_paddle_mode;
 I64 a2600_drive0_count,a2600_drive1_count;
 I64 a2600_trakball_st_v[4]={0x00,0x10,0x30,0x20};
@@ -534,6 +567,20 @@ I64 a2600_trakball_scan_h,a2600_trakball_scan_v;
 I64 a2600_trakball_left,a2600_trakball_down;
 I64 a2600_left_controller,a2600_right_controller;
 I64 a2600_mindlink_pos[2],a2600_mindlink_shift[2],a2600_mindlink_pins;
+I64 a2600_kidvid_id,a2600_kidvid_tape,a2600_kidvid_idx;
+I64 a2600_kidvid_block,a2600_kidvid_block_idx,a2600_kidvid_pins;
+I64 a2600_kidvid_delay;
+I64 a2600_compumate_swcha,a2600_compumate_column;
+I64 a2600_compumate_key_decay[40],a2600_compumate_func_decay,a2600_compumate_shift_decay;
+I64 a2600_compumate_cas_size,a2600_compumate_cas_loaded;
+I64 a2600_compumate_cas_playing,a2600_compumate_cas_start_cycle;
+I64 a2600_compumate_save_active,a2600_compumate_save_t0;
+I64 a2600_compumate_save_last_toggle,a2600_compumate_save_expected_size;
+I64 a2600_compumate_save_byte_pos,a2600_compumate_save_in_header;
+I64 a2600_compumate_save_ok_count,a2600_compumate_save_fail_count;
+I64 a2600_compumate_save_calibrated,a2600_compumate_save_seen_signal;
+I64 a2600_compumate_save_bit_trans[A2600_CM_CAS_FRAME_BITS];
+F64 a2600_compumate_save_cycles_per_bit;
 I64 a2600_joy0_mask,a2600_joy0_decay,a2600_joy1_mask,a2600_joy1_decay;
 I64 a2600_joy0_up_decay,a2600_joy0_down_decay,a2600_joy0_left_decay,a2600_joy0_right_decay;
 I64 a2600_joy1_up_decay,a2600_joy1_down_decay,a2600_joy1_left_decay,a2600_joy1_right_decay;
@@ -1123,7 +1170,7 @@ I64 A2600Cart3EXRamBanks()
 
 U0 A2600CartResetBanks()
 {
-  I64 banks2;
+  I64 banks2,i;
 
   banks2=A2600Cart2KBanks;
   a2600_cart_seg0=0;
@@ -1145,10 +1192,22 @@ U0 A2600CartResetBanks()
   a2600_tvboy_disabled=FALSE;
   a2600_fa2_flash_busy=FALSE;
   a2600_fa2_flash_done_cycle=0;
+  a2600_compumate_swcha=0xFF;
+  a2600_compumate_column=0;
+  for (i=0;i<40;i++)
+    a2600_compumate_key_decay[i]=0;
+  a2600_compumate_func_decay=0;
+  a2600_compumate_shift_decay=0;
+  a2600_compumate_cas_playing=FALSE;
   A2600DPCInit;
   if (a2600_cart_type==A2600_CART_AR) {
     A2600SCInit;
     a2600_bank=0;
+    return;
+  }
+
+  if (a2600_cart_type==A2600_CART_CM) {
+    a2600_bank=3;
     return;
   }
 
@@ -2304,8 +2363,33 @@ Bool A2600DetectFA2(U8 *data,I64 size)
   return FALSE;
 }
 
+Bool A2600DetectCM(U8 *data,I64 size)
+{
+  I64 i,j;
+  Bool ok;
+  U8 *needle;
+
+  if (size!=16384)
+    return FALSE;
+  needle="COMPUMATE";
+  for (i=0;i<=size-9;i++) {
+    ok=TRUE;
+    for (j=0;j<9;j++) {
+      if (data[i+j]!=needle[j]) {
+        ok=FALSE;
+        break;
+      }
+    }
+    if (ok)
+      return TRUE;
+  }
+  return FALSE;
+}
+
 I64 A2600DetectCartType(U8 *data,I64 size)
 {
+  if (A2600DetectCM(data,size)) return A2600_CART_CM;
+
   if (A2600DetectCV(data,size)) return A2600_CART_CV;
 
   if (A2600DetectGL(data,size)) return A2600_CART_GL;
@@ -2493,6 +2577,14 @@ I64 A2600ReadCart(I64 a)
 
   if (a2600_cart_type==A2600_CART_4A50)
     return A26004A50ReadCart(a);
+
+  if (a2600_cart_type==A2600_CART_CM) {
+    if (off<0x0800)
+      return A2600Bus(a2600_rom[(a2600_bank*A2600_BANK_SIZE)+off]);
+    if (a2600_compumate_swcha&0x10)
+      return A2600Bus(a2600_rom[(a2600_bank*A2600_BANK_SIZE)+off]);
+    return A2600Bus(a2600_cart_ram[off&0x07FF]);
+  }
 
   if (a2600_cart_type==A2600_CART_AR) {
     if (off&0x0800)
@@ -2782,6 +2874,12 @@ U0 A2600WriteCart(I64 a,I64 val)
 
   if (a2600_cart_type==A2600_CART_4A50) {
     A26004A50WriteCart(a,val);
+    return;
+  }
+
+  if (a2600_cart_type==A2600_CART_CM) {
+    if (off>=0x0800 && (a2600_compumate_swcha&0x30)==0x20)
+      a2600_cart_ram[off&0x07FF]=val&0xFF;
     return;
   }
 
@@ -3466,11 +3564,23 @@ U0 A2600PA7Update(I64 raw)
   a2600_pa7_last=stable;
 }
 
+extern I64 A2600CompuMateCassetteBit();
+
 I64 A2600PA7RawNow()
 {
+  I64 pins;
+
   if (a2600_swach_dir&0x80)
     return a2600_swcha_out&0x80;
-  return a2600_swcha&0x80;
+
+  pins=a2600_swcha;
+  if (a2600_cart_type==A2600_CART_CM) {
+    if (A2600CompuMateCassetteBit())
+      pins=pins|0x80;
+    else
+      pins=pins&0x7F;
+  }
+  return pins&0x80;
 }
 
 U0 A2600PA7Access()
@@ -3518,6 +3628,574 @@ U0 A2600NoteCollisions(Bool play,Bool p0on,Bool p1on,
     a2600_coll[7]=a2600_coll[7] | 0x80;
   if (m0on && m1on)
     a2600_coll[7]=a2600_coll[7] | 0x40;
+}
+
+Bool A2600ControllerIsQuadTari(I64 ctl)
+{
+  return ctl==A2600_CTRL_QUADTARI;
+}
+
+Bool A2600QuadTariUseFirst()
+{
+  if (A2600AccessCycle()-a2600_quadtari_dump_cycle<
+        A2600_QUADTARI_STABLE_CYCLES)
+    return TRUE;
+  return !a2600_analog_dump;
+}
+
+I64 A2600QuadTariPins(I64 pins)
+{
+  if (!A2600QuadTariUseFirst()) {
+    if (A2600ControllerIsQuadTari(a2600_left_controller))
+      pins=(pins&0x0F)|0xF0;
+    if (A2600ControllerIsQuadTari(a2600_right_controller))
+      pins=(pins&0xF0)|0x0F;
+  }
+  return pins;
+}
+
+Bool A2600QuadTariPadPresent(I64 pad)
+{
+  pad=pad&3;
+  if (pad<2)
+    return A2600ControllerIsQuadTari(a2600_left_controller);
+  return A2600ControllerIsQuadTari(a2600_right_controller);
+}
+
+I64 A2600QuadTariINPT(I64 pad)
+{
+  pad=pad&3;
+  if (pad==0 || pad==2)
+    return 0;
+  if (a2600_analog_dump)
+    return 0;
+  return 0x80;
+}
+
+Bool A2600ControllerIsKidVid(I64 ctl)
+{
+  return ctl==A2600_CTRL_KIDVID;
+}
+
+U0 A2600KidVidResetRuntime()
+{
+  a2600_kidvid_tape=0;
+  a2600_kidvid_idx=0;
+  a2600_kidvid_block=0;
+  a2600_kidvid_block_idx=A2600_KIDVID_BLOCK_BITS;
+  a2600_kidvid_pins=0xFF;
+  a2600_kidvid_delay=0;
+}
+
+U0 A2600KidVidClear()
+{
+  a2600_kidvid_id=0;
+  A2600KidVidResetRuntime;
+}
+
+U0 A2600KidVidSetGame(I64 id)
+{
+  if (id!=A2600_KIDVID_BBEARS)
+    id=A2600_KIDVID_SMURFS;
+  a2600_kidvid_id=id;
+  a2600_right_controller=A2600_CTRL_KIDVID;
+}
+
+I64 A2600KidVidTapeIndex()
+{
+  if (a2600_kidvid_tape==4)
+    return 3;
+  if (a2600_kidvid_id==A2600_KIDVID_BBEARS)
+    return a2600_kidvid_tape+2;
+  return a2600_kidvid_tape-1;
+}
+
+U0 A2600KidVidSelectTape(I64 tape)
+{
+  if (!a2600_kidvid_id)
+    A2600KidVidSetGame(A2600_KIDVID_SMURFS);
+  if (tape<1 || tape>4)
+    return;
+  if (tape==4 && a2600_kidvid_id!=A2600_KIDVID_BBEARS)
+    tape=1;
+  a2600_kidvid_tape=tape;
+  if (a2600_kidvid_id==A2600_KIDVID_BBEARS)
+    a2600_kidvid_idx=A2600_KIDVID_BLOCK_BITS;
+  else
+    a2600_kidvid_idx=0;
+  a2600_kidvid_block=0;
+  a2600_kidvid_block_idx=A2600_KIDVID_BLOCK_BITS;
+  a2600_kidvid_delay=0;
+  a2600_kidvid_pins=0xFF;
+}
+
+U0 A2600KidVidSetDataBit()
+{
+  I64 bit;
+
+  bit=(a2600_kidvid_data[(a2600_kidvid_idx>>3)%48]<<
+        (a2600_kidvid_idx&7))&0x80;
+  a2600_kidvid_pins=a2600_kidvid_pins&0xF7;
+  if (bit)
+    a2600_kidvid_pins=a2600_kidvid_pins|0x08;
+}
+
+U0 A2600KidVidAdvanceBlock()
+{
+  I64 tape_idx;
+
+  if (a2600_kidvid_block==0)
+    a2600_kidvid_idx=A2600_KIDVID_DATA00_BITS+
+          (a2600_kidvid_tape-1)*A2600_KIDVID_BLOCK_BITS;
+  else {
+    tape_idx=A2600KidVidTapeIndex();
+    if (tape_idx<0 || tape_idx>=6 ||
+          a2600_kidvid_block>=a2600_kidvid_blocks[tape_idx])
+      a2600_kidvid_idx=A2600_KIDVID_END_BITS;
+    else {
+      a2600_kidvid_idx=A2600_KIDVID_PAUSE_BITS;
+      a2600_kidvid_delay=A2600_KIDVID_NO_WAV_DELAY;
+    }
+  }
+  a2600_kidvid_block++;
+  a2600_kidvid_block_idx=A2600_KIDVID_BLOCK_BITS;
+}
+
+U0 A2600KidVidFrame()
+{
+  I64 running;
+
+  if (a2600_right_controller!=A2600_CTRL_KIDVID || !a2600_kidvid_tape)
+    return;
+  if (a2600_kidvid_delay>0) {
+    a2600_kidvid_delay--;
+    return;
+  }
+  running=(a2600_swcha_out | (0xFF-a2600_swach_dir))&0x01;
+  if (!running)
+    return;
+
+  A2600KidVidSetDataBit;
+  a2600_kidvid_idx++;
+  a2600_kidvid_block_idx--;
+  if (a2600_kidvid_block_idx<=0)
+    A2600KidVidAdvanceBlock;
+}
+
+I64 A2600KidVidPins(I64 pins)
+{
+  if (a2600_right_controller==A2600_CTRL_KIDVID) {
+    pins=pins&0xF7;
+    if (a2600_kidvid_pins&0x08)
+      pins=pins|0x08;
+  }
+  return pins;
+}
+
+Bool A2600ControllerIsCompuMate(I64 ctl)
+{
+  return ctl==A2600_CTRL_COMPUMATE;
+}
+
+Bool A2600CompuMateActive()
+{
+  return A2600ControllerIsCompuMate(a2600_left_controller) ||
+        A2600ControllerIsCompuMate(a2600_right_controller);
+}
+
+U0 A2600CompuMateReset()
+{
+  I64 i;
+
+  a2600_compumate_swcha=0xFF;
+  a2600_compumate_column=0;
+  for (i=0;i<40;i++)
+    a2600_compumate_key_decay[i]=0;
+  a2600_compumate_func_decay=0;
+  a2600_compumate_shift_decay=0;
+}
+
+U0 A2600CompuMateClearSaveState()
+{
+  I64 i;
+
+  a2600_compumate_save_active=FALSE;
+  a2600_compumate_save_t0=-1;
+  a2600_compumate_save_last_toggle=0;
+  a2600_compumate_save_expected_size=0;
+  a2600_compumate_save_byte_pos=0;
+  a2600_compumate_save_in_header=TRUE;
+  a2600_compumate_save_ok_count=0;
+  a2600_compumate_save_fail_count=0;
+  a2600_compumate_save_calibrated=FALSE;
+  a2600_compumate_save_seen_signal=FALSE;
+  a2600_compumate_save_cycles_per_bit=0;
+  for (i=0;i<A2600_CM_CAS_FRAME_BITS;i++)
+    a2600_compumate_save_bit_trans[i]=0;
+}
+
+U0 A2600CompuMateResetCassette()
+{
+  a2600_compumate_cas_size=0;
+  a2600_compumate_cas_loaded=FALSE;
+  a2600_compumate_cas_playing=FALSE;
+  a2600_compumate_cas_start_cycle=0;
+  a2600_compumate_cas_path[0]=0;
+  A2600CompuMateClearSaveState;
+}
+
+Bool A2600CompuMateLoadCassette(U8 *filename)
+{
+  U8 *data;
+  I64 size,i;
+
+  A2600CompuMateResetCassette;
+  if (!filename || !*filename)
+    return FALSE;
+  if (StrLen(filename)>=A2600_CART_PATH_MAX-5)
+    return FALSE;
+  StrCpy(a2600_compumate_cas_path,filename);
+  FileExtRem(a2600_compumate_cas_path);
+  CatPrint(a2600_compumate_cas_path,".CAS");
+  if (!FileFind(a2600_compumate_cas_path,,FUF_JUST_FILES))
+    return FALSE;
+  data=FileRead(a2600_compumate_cas_path,&size);
+  if (!data)
+    return FALSE;
+  if (size!=A2600_CM_CAS_MIN_SIZE && size!=A2600_CM_CAS_MAX_SIZE) {
+    Free(data);
+    return FALSE;
+  }
+  for (i=0;i<size;i++)
+    a2600_compumate_cas[i]=data[i];
+  Free(data);
+  a2600_compumate_cas_size=size;
+  a2600_compumate_cas_loaded=TRUE;
+  return TRUE;
+}
+
+U0 A2600CompuMateStartCassette()
+{
+  if (!a2600_compumate_cas_loaded)
+    return;
+  a2600_compumate_cas_playing=TRUE;
+  a2600_compumate_cas_start_cycle=A2600AccessCycle();
+}
+
+F64 A2600CompuMateCPUFreq()
+{
+  if (a2600_tv_format==A2600_TV_PAL || a2600_tv_format==A2600_TV_PAL60)
+    return 1182298.0;
+  if (a2600_tv_format==A2600_TV_SECAM || a2600_tv_format==A2600_TV_SECAM60)
+    return 1187500.0;
+  return 1193182.0;
+}
+
+Bool A2600CompuMateSaveCassette()
+{
+  Bool ok;
+
+  if (!a2600_compumate_cas_loaded || a2600_compumate_cas_size<=0)
+    return FALSE;
+  if (!a2600_compumate_cas_path[0])
+    return FALSE;
+  ok=FALSE;
+  try {
+    ok=FileWrite(a2600_compumate_cas_path,a2600_compumate_cas,
+          a2600_compumate_cas_size)>0;
+  } catch
+    Fs->catch_except=TRUE;
+  return ok;
+}
+
+U0 A2600CompuMateFinalizeSave()
+{
+  a2600_compumate_save_active=FALSE;
+  a2600_compumate_save_t0=-1;
+  A2600CompuMateSaveCassette;
+}
+
+U0 A2600CompuMateStartRecord()
+{
+  I64 i,expected;
+
+  if (!a2600_compumate_cas_path[0])
+    return;
+
+  expected=A2600_CM_CAS_MIN_SIZE;
+  if (a2600_compumate_cas_size==A2600_CM_CAS_MAX_SIZE)
+    expected=A2600_CM_CAS_MAX_SIZE;
+  if (!a2600_compumate_cas_loaded) {
+    for (i=0;i<expected;i++)
+      a2600_compumate_cas[i]=0;
+  } else if (a2600_compumate_cas_size<expected) {
+    for (i=a2600_compumate_cas_size;i<expected;i++)
+      a2600_compumate_cas[i]=0;
+  }
+
+  a2600_compumate_cas_size=expected;
+  a2600_compumate_cas_loaded=TRUE;
+  a2600_compumate_cas_playing=FALSE;
+  A2600CompuMateClearSaveState;
+  a2600_compumate_save_expected_size=expected;
+  a2600_compumate_save_active=TRUE;
+  a2600_compumate_save_last_toggle=A2600AccessCycle();
+  a2600_compumate_save_in_header=TRUE;
+  a2600_compumate_save_cycles_per_bit=18.0*A2600CompuMateCPUFreq()/22050.0;
+}
+
+U0 A2600CompuMateFinalizeSaveByte()
+{
+  I64 i,valid_stop,byte;
+
+  if (a2600_compumate_save_t0<0)
+    return;
+  a2600_compumate_save_t0=-1;
+
+  valid_stop=TRUE;
+  for (i=9;i<=12;i++)
+    if (a2600_compumate_save_bit_trans[i]!=4)
+      valid_stop=FALSE;
+
+  if (a2600_compumate_save_bit_trans[0]!=2 || !valid_stop) {
+    a2600_compumate_save_fail_count++;
+    return;
+  }
+
+  byte=0;
+  for (i=1;i<=8;i++) {
+    if (a2600_compumate_save_bit_trans[i]==4)
+      byte=byte | (1<<(i-1));
+    else if (a2600_compumate_save_bit_trans[i]!=2) {
+      a2600_compumate_save_fail_count++;
+      return;
+    }
+  }
+  a2600_compumate_save_ok_count++;
+
+  if (a2600_compumate_save_in_header) {
+    if (byte==0xFF)
+      return;
+    a2600_compumate_save_in_header=FALSE;
+  }
+
+  if (a2600_compumate_save_byte_pos<a2600_compumate_save_expected_size) {
+    a2600_compumate_cas[a2600_compumate_save_byte_pos]=byte;
+    a2600_compumate_save_byte_pos++;
+    if (a2600_compumate_save_byte_pos>=a2600_compumate_save_expected_size)
+      A2600CompuMateFinalizeSave;
+  }
+}
+
+U0 A2600CompuMateCassetteD6Toggled(I64 cycles)
+{
+  F64 cycles_since_t0;
+  I64 i,gap,bit_window,byte_full;
+
+  if (!a2600_compumate_save_active)
+    return;
+
+  gap=cycles-a2600_compumate_save_last_toggle;
+  a2600_compumate_save_last_toggle=cycles;
+  if (gap<A2600_CM_SAVE_MIN_FSK_GAP)
+    return;
+  a2600_compumate_save_seen_signal=TRUE;
+
+  if (!a2600_compumate_save_calibrated) {
+    if (a2600_compumate_save_t0>=0 && gap>A2600_CM_SAVE_MAX_CALIB_GAP) {
+      a2600_compumate_save_t0=-1;
+      for (i=0;i<A2600_CM_CAS_FRAME_BITS;i++)
+        a2600_compumate_save_bit_trans[i]=0;
+    }
+    if (a2600_compumate_save_t0<0) {
+      a2600_compumate_save_t0=cycles;
+      a2600_compumate_save_bit_trans[0]=1;
+    } else if (a2600_compumate_save_bit_trans[0]==1) {
+      a2600_compumate_save_bit_trans[0]=2;
+    } else {
+      a2600_compumate_save_cycles_per_bit=cycles-a2600_compumate_save_t0;
+      a2600_compumate_save_calibrated=TRUE;
+      a2600_compumate_save_bit_trans[1]=1;
+    }
+    return;
+  }
+
+  if (a2600_compumate_save_t0>=0) {
+    cycles_since_t0=cycles-a2600_compumate_save_t0;
+    bit_window=(cycles_since_t0+a2600_compumate_save_cycles_per_bit/16.0)/
+          a2600_compumate_save_cycles_per_bit;
+    byte_full=bit_window>12 ||
+          (bit_window==12 && a2600_compumate_save_bit_trans[12]>=4);
+    if (!byte_full) {
+      if (bit_window>=0 && bit_window<A2600_CM_CAS_FRAME_BITS)
+        a2600_compumate_save_bit_trans[bit_window]++;
+      return;
+    }
+    A2600CompuMateFinalizeSaveByte;
+  }
+
+  a2600_compumate_save_t0=cycles;
+  for (i=0;i<A2600_CM_CAS_FRAME_BITS;i++)
+    a2600_compumate_save_bit_trans[i]=0;
+  a2600_compumate_save_bit_trans[0]=1;
+}
+
+U0 A2600CompuMateCheckCassetteTimeout()
+{
+  if (!a2600_compumate_save_active)
+    return;
+  if (!a2600_compumate_save_seen_signal)
+    return;
+  if (A2600AccessCycle()-a2600_compumate_save_last_toggle>
+        A2600_CM_SAVE_TIMEOUT_CYCLES) {
+    if (a2600_compumate_save_t0>=0)
+      A2600CompuMateFinalizeSaveByte;
+    if (a2600_compumate_save_active)
+      A2600CompuMateFinalizeSave;
+  }
+}
+
+I64 A2600CompuMateCassetteBit()
+{
+  F64 sample_pos,phase;
+  I64 cycle,stream_bit,byte_idx,frame_bit,byte,bit;
+
+  if (!a2600_compumate_cas_loaded || !a2600_compumate_cas_playing)
+    return 1;
+  cycle=A2600AccessCycle()-a2600_compumate_cas_start_cycle;
+  if (cycle<0)
+    cycle=0;
+  sample_pos=cycle*22050.0/A2600CompuMateCPUFreq();
+  stream_bit=sample_pos/18.0;
+  phase=sample_pos-stream_bit*18.0;
+  byte_idx=stream_bit/A2600_CM_CAS_FRAME_BITS;
+  frame_bit=stream_bit%A2600_CM_CAS_FRAME_BITS;
+  if (byte_idx<A2600_CM_CAS_SYNC_BYTES)
+    byte=0xFF;
+  else {
+    byte_idx-=A2600_CM_CAS_SYNC_BYTES;
+    if (byte_idx>=a2600_compumate_cas_size)
+      return 1;
+    byte=a2600_compumate_cas[byte_idx];
+  }
+  if (!frame_bit)
+    bit=0;
+  else if (frame_bit<9)
+    bit=(byte>>(frame_bit-1))&1;
+  else
+    bit=1;
+  if (!bit) {
+    if (phase<9.0)
+      return 0;
+    return 1;
+  }
+  if (phase<5.0 || (phase>=9.0 && phase<14.0))
+    return 0;
+  return 1;
+}
+
+U0 A2600CompuMatePressKey(I64 idx)
+{
+  if (idx>=0 && idx<40)
+    a2600_compumate_key_decay[idx]=180;
+}
+
+U0 A2600CompuMatePressFunc()
+{
+  a2600_compumate_func_decay=180;
+}
+
+U0 A2600CompuMatePressShift()
+{
+  a2600_compumate_shift_decay=180;
+}
+
+Bool A2600CompuMateRowActive(I64 row)
+{
+  I64 idx;
+
+  if (!A2600CompuMateActive())
+    return FALSE;
+  idx=((a2600_compumate_column%10)*4)+(row&3);
+  return a2600_compumate_key_decay[idx]>0;
+}
+
+U0 A2600CompuMateDecayKeys()
+{
+  I64 i;
+
+  if (!A2600CompuMateActive())
+    return;
+  for (i=0;i<40;i++) {
+    if (a2600_compumate_key_decay[i]>0)
+      a2600_compumate_key_decay[i]--;
+  }
+  if (a2600_compumate_func_decay>0)
+    a2600_compumate_func_decay--;
+  if (a2600_compumate_shift_decay>0)
+    a2600_compumate_shift_decay--;
+}
+
+U0 A2600CompuMateWriteSWCHA(I64 val)
+{
+  I64 prev;
+
+  prev=a2600_compumate_swcha;
+  val=val&0xFF;
+  a2600_compumate_swcha=val;
+  a2600_bank=val&3;
+  if ((val^prev)&0x40)
+    A2600CompuMateCassetteD6Toggled(A2600AccessCycle());
+  if (val&0x10) {
+    if (val&0x20)
+      a2600_compumate_column=0;
+    else if ((val&0x40) && !(prev&0x40))
+      a2600_compumate_column=(a2600_compumate_column+1)%10;
+  }
+}
+
+I64 A2600CompuMatePins(I64 pins)
+{
+  if (A2600CompuMateActive()) {
+    pins=pins|0x8C;
+    if (A2600CompuMateRowActive(1))
+      pins=pins&0xFB;
+    if (A2600CompuMateRowActive(3))
+      pins=pins&0xF7;
+    if (a2600_compumate_cas_loaded && a2600_compumate_cas_playing) {
+      if (A2600CompuMateCassetteBit())
+        pins=pins|0x80;
+      else
+        pins=pins&0x7F;
+    }
+  }
+  return pins;
+}
+
+Bool A2600CompuMatePadPresent(I64 pad)
+{
+  pad=pad&3;
+  if (pad<2)
+    return a2600_left_controller==A2600_CTRL_COMPUMATE;
+  return a2600_right_controller==A2600_CTRL_COMPUMATE;
+}
+
+I64 A2600CompuMateINPT(I64 pad)
+{
+  pad=pad&3;
+  if (pad==0) {
+    if (a2600_compumate_func_decay>0)
+      return 0x80;
+    return 0;
+  }
+  if (pad==3) {
+    if (a2600_compumate_shift_decay>0)
+      return 0x80;
+    return 0;
+  }
+  if (a2600_analog_dump)
+    return 0;
+  return 0x80;
 }
 
 I64 A2600SaveKeyPins(I64 pins)
@@ -3709,6 +4387,7 @@ U0 A2600PollInput(I64 advance=TRUE)
   }
 
   a2600_swcha=(a2600_swcha_out | (0xFF-a2600_swach_dir)) & swcha_pins;
+  a2600_swcha=A2600QuadTariPins(a2600_swcha);
   a2600_swcha=A2600SaveKeyPins(a2600_swcha);
   a2600_swcha=A2600MindlinkPins(a2600_swcha);
   a2600_swchb=(a2600_swchb_out | (0xFF-a2600_swbch_dir)) & (swchb_pins | a2600_swbch_dir);
@@ -3777,6 +4456,11 @@ U0 A2600PaddleMove(I64 pad,I64 delta)
     a2600_left_controller=A2600_CTRL_PADDLE;
   else
     a2600_right_controller=A2600_CTRL_PADDLE;
+}
+
+U0 A2600PaddleMoveAxis(I64 axis,I64 delta)
+{
+  A2600PaddleMove(axis&3,delta);
 }
 
 U0 A2600DrivingStep(I64 port,I64 delta)
@@ -4197,6 +4881,12 @@ U0 A2600BoosterGripPress(I64 port,I64 button)
 
 U0 A2600AnalogVBlank(I64 val)
 {
+  I64 old_dump,new_dump;
+
+  old_dump=a2600_analog_dump!=0;
+  new_dump=(val&0x80)!=0;
+  if (old_dump!=new_dump)
+    a2600_quadtari_dump_cycle=A2600AccessCycle();
   if (val&0x80) {
     a2600_analog_dump=1;
     a2600_analog_charge_start=a2600_tia_cycle;
@@ -4210,6 +4900,8 @@ I64 A2600AnalogINPT(I64 pad)
 {
   I64 elapsed;
 
+  if (A2600QuadTariPadPresent(pad))
+    return A2600QuadTariINPT(pad);
   if (A2600AnalogButtonPadPresent(pad))
     return A2600AnalogButtonINPT(pad);
   if (a2600_analog_dump)
@@ -4227,7 +4919,15 @@ I64 A2600INPT4()
 {
   I64 val;
 
-  if (a2600_fire0)
+  if (A2600CompuMateActive()) {
+    if (A2600CompuMateRowActive(0))
+      val=0;
+    else
+      val=0x80;
+  } else if (A2600ControllerIsQuadTari(a2600_left_controller) &&
+        !A2600QuadTariUseFirst())
+    val=0x80;
+  else if (a2600_fire0)
     val=0;
   else
     val=0x80;
@@ -4243,7 +4943,15 @@ I64 A2600INPT5()
 {
   I64 val;
 
-  if (a2600_fire1)
+  if (A2600CompuMateActive()) {
+    if (A2600CompuMateRowActive(2))
+      val=0;
+    else
+      val=0x80;
+  } else if (A2600ControllerIsQuadTari(a2600_right_controller) &&
+        !A2600QuadTariUseFirst())
+    val=0x80;
+  else if (a2600_fire1)
     val=0;
   else
     val=0x80;
@@ -4255,10 +4963,95 @@ I64 A2600INPT5()
   return val;
 }
 
+Bool A2600KidVidHandleKey(I64 ch,I64 code)
+{
+  if (a2600_right_controller!=A2600_CTRL_KIDVID)
+    return FALSE;
+  if (ch=='1') {
+    A2600KidVidSelectTape(1);
+    return TRUE;
+  }
+  if (ch=='2') {
+    A2600KidVidSelectTape(2);
+    return TRUE;
+  }
+  if (ch=='3') {
+    A2600KidVidSelectTape(3);
+    return TRUE;
+  }
+  if (ch=='4') {
+    A2600KidVidSelectTape(4);
+    return TRUE;
+  }
+  if (ch=='b' || ch=='B') {
+    A2600KidVidSetGame(A2600_KIDVID_BBEARS);
+    return TRUE;
+  }
+  if (ch=='g' || ch=='G') {
+    A2600KidVidSetGame(A2600_KIDVID_SMURFS);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+I64 A2600CompuMateKeyIndex(I64 ch)
+{
+  if (ch>='a' && ch<='z')
+    return ch-'a';
+  if (ch>='A' && ch<='Z')
+    return ch-'A';
+  if (ch>='0' && ch<='9')
+    return 26+ch-'0';
+  if (ch==' ')
+    return 36;
+  if (ch=='.')
+    return 37;
+  if (ch==',')
+    return 38;
+  if (ch=='/')
+    return 39;
+  return -1;
+}
+
+Bool A2600CompuMateHandleSpecialKey(I64 ch,I64 code)
+{
+  if (!A2600CompuMateActive())
+    return FALSE;
+  if (ch=='[') {
+    A2600CompuMatePressFunc;
+    return TRUE;
+  }
+  if (ch==']') {
+    A2600CompuMatePressShift;
+    return TRUE;
+  }
+  return FALSE;
+}
+
+Bool A2600CompuMateHandleKey(I64 ch,I64 code)
+{
+  I64 idx;
+
+  if (!A2600CompuMateActive())
+    return FALSE;
+  if (A2600CompuMateHandleSpecialKey(ch,code))
+    return TRUE;
+  idx=A2600CompuMateKeyIndex(ch);
+  if (idx<0)
+    return FALSE;
+  A2600CompuMatePressKey(idx);
+  return TRUE;
+}
+
 U0 A2600HandleKey(I64 ch,I64 sc)
 {
   I64 code;
   code=sc.u8[0];
+
+  if (A2600KidVidHandleKey(ch,code))
+    return;
+  if (A2600CompuMateHandleKey(ch,code))
+    return;
 
   if (code==SC_CURSOR_UP)
     a2600_joy0_up_decay=A2600_INPUT_HOLD_DECAY;
@@ -4284,13 +5077,13 @@ U0 A2600HandleKey(I64 ch,I64 sc)
   if (ch=='m' || ch=='M')
     a2600_fire1_decay=A2600_INPUT_HOLD_DECAY;
   if (ch=='a' || ch=='A')
-    A2600PaddleMove(0,A2600_PADDLE_STEP);
+    A2600PaddleMoveAxis(0,A2600_PADDLE_STEP);
   if (ch=='d' || ch=='D')
-    A2600PaddleMove(0,-A2600_PADDLE_STEP);
+    A2600PaddleMoveAxis(0,-A2600_PADDLE_STEP);
   if (ch=='w' || ch=='W')
-    A2600PaddleMove(1,-A2600_PADDLE_STEP);
+    A2600PaddleMoveAxis(1,-A2600_PADDLE_STEP);
   if (ch=='s' || ch=='S')
-    A2600PaddleMove(1,A2600_PADDLE_STEP);
+    A2600PaddleMoveAxis(1,A2600_PADDLE_STEP);
   if (ch=='z' || ch=='Z')
     A2600DrivingStep(0,-4);
   if (ch=='x' || ch=='X')
@@ -4981,6 +5774,8 @@ U0 A2600FinishFrame()
   if (!a2600_frame_done) {
     a2600_last_frame_scanlines=a2600_frame_scanline;
     a2600_frames++;
+    A2600KidVidFrame;
+    A2600CompuMateCheckCassetteTimeout;
     a2600_frame_done=TRUE;
   }
 }
@@ -5220,6 +6015,22 @@ U0 A2600ApplyCartControllerSignatures(U8 *data,I64 size)
     A2600SaveKeySetController(TRUE);
   else if (A2600MemHas(data,size,"SAVEKEY"))
     A2600SaveKeySetController(FALSE);
+  if (A2600MemHas(data,size,"KIDVIDB"))
+    A2600KidVidSetGame(A2600_KIDVID_BBEARS);
+  else if (A2600MemHas(data,size,"KIDVID"))
+    A2600KidVidSetGame(A2600_KIDVID_SMURFS);
+  if (A2600MemHas(data,size,"KIDVID1"))
+    A2600KidVidSelectTape(1);
+  if (A2600MemHas(data,size,"KIDVID2"))
+    A2600KidVidSelectTape(2);
+  if (A2600MemHas(data,size,"KIDVID3"))
+    A2600KidVidSelectTape(3);
+  if (A2600MemHas(data,size,"KIDVID4"))
+    A2600KidVidSelectTape(4);
+  if (A2600MemHas(data,size,"COMPUMATE")) {
+    a2600_left_controller=A2600_CTRL_COMPUMATE;
+    a2600_right_controller=A2600_CTRL_COMPUMATE;
+  }
   if (A2600MemHas(data,size,"MINDLINK")) {
     a2600_left_controller=A2600_CTRL_MINDLINK;
     a2600_right_controller=A2600_CTRL_MINDLINK;
@@ -5228,6 +6039,10 @@ U0 A2600ApplyCartControllerSignatures(U8 *data,I64 size)
     a2600_left_controller=A2600_CTRL_MINDLINK;
   if (A2600MemHas(data,size,"MLINKR"))
     a2600_right_controller=A2600_CTRL_MINDLINK;
+  if (A2600MemHas(data,size,"QUADTARI")) {
+    a2600_left_controller=A2600_CTRL_QUADTARI;
+    a2600_right_controller=A2600_CTRL_QUADTARI;
+  }
 }
 
 Bool A2600StellaPhosphorCRC(I64 crc)
@@ -5938,7 +6753,10 @@ I64 A2600Read(I64 addr)
     if (r==0) {
       A2600TrakBallUpdate;
       a2600_swcha=A2600TrakBallPins(a2600_swcha);
+      a2600_swcha=A2600QuadTariPins(a2600_swcha);
       a2600_swcha=A2600SaveKeyPins(a2600_swcha);
+      a2600_swcha=A2600KidVidPins(a2600_swcha);
+      a2600_swcha=A2600CompuMatePins(a2600_swcha);
       v=A2600Bus(a2600_swcha);
     }
     else if (r==1)
@@ -6247,6 +7065,8 @@ U0 A2600Write(I64 addr,I64 val)
       a2600_swcha_out=val&0xFF;
       A2600SaveKeyUpdatePins;
       A2600MindlinkSWCHAWrite(val);
+      if (a2600_cart_type==A2600_CART_CM)
+        A2600CompuMateWriteSWCHA(val);
     }
     if (r==1 || r==9 || r==17 || r==25) {
       a2600_swach_dir=val&0xFF;
@@ -8052,6 +8872,10 @@ Bool A2600LoadCartPath(U8 *filename)
     A2600SaveKeyLoad(filename);
   a2600_gl_has_init_ram=FALSE;
   a2600_cart_type=A2600DetectCartType(data,rom_size);
+  if (a2600_cart_type==A2600_CART_CM)
+    A2600CompuMateLoadCassette(filename);
+  else
+    A2600CompuMateResetCassette;
   if (a2600_cart_type==A2600_CART_FA2) {
     if (size==29696 || size==32768) {
       for (i=0;i<A2600_ROM_SIZE;i++)
@@ -8183,6 +9007,7 @@ U0 A2600Reset()
 {
   I64 i;
 
+  A2600KidVidClear;
   A2600LoadROM;
   a2600_cycles=0;
   a2600_cpu_bus_active=0;
@@ -8294,6 +9119,7 @@ U0 A2600Reset()
   a2600_inpt5_latch=0x80;
   a2600_analog_dump=0;
   a2600_analog_charge_start=0;
+  a2600_quadtari_dump_cycle=0;
   for (i=0;i<4;i++)
     A2600PaddleSet(i,128);
   a2600_paddle_mode=0;
