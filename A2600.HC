@@ -48,6 +48,7 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_PADDLE_MIN_CYCLES     (1*76)
 #define A2600_PADDLE_CHARGE_CYCLES (379*76)
 #define A2600_PADDLE_STEP           8
+#define A2600_LIGHTGUN_WINDOW       15
 #define A2600_FM_WAIT_VSYNC_START     0
 #define A2600_FM_WAIT_VSYNC_END       1
 #define A2600_FM_WAIT_FRAME_START     2
@@ -71,6 +72,7 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CTRL_JS                 0
 #define A2600_CTRL_PADDLE             1
 #define A2600_CTRL_DRIVING            3
+#define A2600_CTRL_LIGHTGUN           4
 #define A2600_CTRL_COMPUMATE          5
 #define A2600_CTRL_KIDVID             6
 #define A2600_CTRL_MINDLINK           7
@@ -565,7 +567,12 @@ I64 a2600_trakball_pending_h,a2600_trakball_pending_v;
 I64 a2600_trakball_lines_h,a2600_trakball_lines_v;
 I64 a2600_trakball_scan_h,a2600_trakball_scan_v;
 I64 a2600_trakball_left,a2600_trakball_down;
+I64 a2600_lightgun_mode,a2600_lightgun_port,a2600_lightgun_x,a2600_lightgun_y;
+I64 a2600_lightgun_cycle,a2600_lightgun_line,a2600_lightgun_wrap;
+I64 a2600_lightgun_adjust,a2600_lightgun_vadjust;
 I64 a2600_left_controller,a2600_right_controller;
+I64 a2600_controller_lightgun_adjust,a2600_controller_lightgun_vadjust;
+I64 a2600_controller_lightgun_wrap;
 I64 a2600_mindlink_pos[2],a2600_mindlink_shift[2],a2600_mindlink_pins;
 I64 a2600_kidvid_id,a2600_kidvid_tape,a2600_kidvid_idx;
 I64 a2600_kidvid_block,a2600_kidvid_block_idx,a2600_kidvid_pins;
@@ -4358,6 +4365,12 @@ U0 A2600PollInput(I64 advance=TRUE)
   }
   if (a2600_paddle_mode && a2600_fire0_decay>0)
     swcha_pins=swcha_pins & 0x7F;
+  if (a2600_lightgun_mode && a2600_fire0_decay>0) {
+    if (a2600_lightgun_port&1)
+      swcha_pins=swcha_pins & 0xFE;
+    else
+      swcha_pins=swcha_pins & 0xEF;
+  }
 
   if (a2600_left_controller==A2600_CTRL_DRIVING)
     drive0=(a2600_driving_table[(a2600_drive0_count&0x0F)>>2]&0x0F)<<4;
@@ -4799,6 +4812,9 @@ U0 A2600SetControllerDefaults()
 {
   a2600_left_controller=A2600_CTRL_JS;
   a2600_right_controller=A2600_CTRL_JS;
+  a2600_controller_lightgun_adjust=0;
+  a2600_controller_lightgun_vadjust=5;
+  a2600_controller_lightgun_wrap=78;
   A2600SaveKeyClear;
 }
 
@@ -4879,6 +4895,70 @@ U0 A2600BoosterGripPress(I64 port,I64 button)
   }
 }
 
+U0 A2600LightgunPort(I64 port)
+{
+  a2600_lightgun_port=port&1;
+  if (a2600_lightgun_port&1)
+    a2600_right_controller=A2600_CTRL_LIGHTGUN;
+  else
+    a2600_left_controller=A2600_CTRL_LIGHTGUN;
+}
+
+U0 A2600LightgunAim(I64 x,I64 y)
+{
+  if (x<0)
+    x=0;
+  if (x>=A2600_FB_W)
+    x=A2600_FB_W-1;
+  if (y<0)
+    y=0;
+  if (y>=A2600_FB_H)
+    y=A2600_FB_H-1;
+
+  a2600_lightgun_mode=1;
+  if (a2600_lightgun_port&1)
+    a2600_right_controller=A2600_CTRL_LIGHTGUN;
+  else
+    a2600_left_controller=A2600_CTRL_LIGHTGUN;
+  a2600_lightgun_x=x;
+  a2600_lightgun_y=y;
+  a2600_lightgun_cycle=(x/3)+23+a2600_lightgun_adjust;
+  a2600_lightgun_line=y+4-a2600_lightgun_vadjust;
+  if (a2600_lightgun_cycle>=76)
+    a2600_lightgun_line++;
+  if (a2600_lightgun_line<0)
+    a2600_lightgun_line=0;
+}
+
+U0 A2600LightgunMove(I64 dx,I64 dy)
+{
+  A2600LightgunAim(a2600_lightgun_x+dx,a2600_lightgun_y+dy);
+}
+
+I64 A2600LightgunTestAt(I64 rclock,I64 scanline)
+{
+  I64 beam,delta;
+
+  if (!a2600_lightgun_mode)
+    return 0x80;
+  if (a2600_lightgun_line>scanline)
+    return 0x80;
+
+  beam=rclock;
+  if (a2600_lightgun_cycle>=a2600_lightgun_wrap && rclock<=22)
+    beam=rclock+76;
+  delta=beam-a2600_lightgun_cycle;
+  if (delta>=0 && delta<A2600_LIGHTGUN_WINDOW)
+    return 0;
+  return 0x80;
+}
+
+I64 A2600LightgunSensor()
+{
+  return A2600LightgunTestAt(A2600CPUCycleAt(A2600AccessCycle()),
+        a2600_scanline);
+}
+
 U0 A2600AnalogVBlank(I64 val)
 {
   I64 old_dump,new_dump;
@@ -4927,6 +5007,8 @@ I64 A2600INPT4()
   } else if (A2600ControllerIsQuadTari(a2600_left_controller) &&
         !A2600QuadTariUseFirst())
     val=0x80;
+  else if (a2600_lightgun_mode && !(a2600_lightgun_port&1))
+    val=A2600LightgunSensor();
   else if (a2600_fire0)
     val=0;
   else
@@ -4951,6 +5033,8 @@ I64 A2600INPT5()
   } else if (A2600ControllerIsQuadTari(a2600_right_controller) &&
         !A2600QuadTariUseFirst())
     val=0x80;
+  else if (a2600_lightgun_mode && (a2600_lightgun_port&1))
+    val=A2600LightgunSensor();
   else if (a2600_fire1)
     val=0;
   else
@@ -5053,14 +5137,34 @@ U0 A2600HandleKey(I64 ch,I64 sc)
   if (A2600CompuMateHandleKey(ch,code))
     return;
 
-  if (code==SC_CURSOR_UP)
-    a2600_joy0_up_decay=A2600_INPUT_HOLD_DECAY;
-  if (code==SC_CURSOR_DOWN)
-    a2600_joy0_down_decay=A2600_INPUT_HOLD_DECAY;
-  if (code==SC_CURSOR_LEFT)
-    a2600_joy0_left_decay=A2600_INPUT_HOLD_DECAY;
-  if (code==SC_CURSOR_RIGHT)
-    a2600_joy0_right_decay=A2600_INPUT_HOLD_DECAY;
+  if (ch=='g' || ch=='G') {
+    if (a2600_lightgun_mode)
+      a2600_lightgun_mode=0;
+    else
+      A2600LightgunAim(a2600_lightgun_x,a2600_lightgun_y);
+  }
+  if (ch=='h' || ch=='H')
+    A2600LightgunPort(a2600_lightgun_port+1);
+
+  if (a2600_lightgun_mode) {
+    if (code==SC_CURSOR_UP)
+      A2600LightgunMove(0,-4);
+    if (code==SC_CURSOR_DOWN)
+      A2600LightgunMove(0,4);
+    if (code==SC_CURSOR_LEFT)
+      A2600LightgunMove(-4,0);
+    if (code==SC_CURSOR_RIGHT)
+      A2600LightgunMove(4,0);
+  } else {
+    if (code==SC_CURSOR_UP)
+      a2600_joy0_up_decay=A2600_INPUT_HOLD_DECAY;
+    if (code==SC_CURSOR_DOWN)
+      a2600_joy0_down_decay=A2600_INPUT_HOLD_DECAY;
+    if (code==SC_CURSOR_LEFT)
+      a2600_joy0_left_decay=A2600_INPUT_HOLD_DECAY;
+    if (code==SC_CURSOR_RIGHT)
+      a2600_joy0_right_decay=A2600_INPUT_HOLD_DECAY;
+  }
   if (ch=='f' || ch=='F' ||
         ch==CH_SPACE || code==A2600_SC_SPACE ||
         code==A2600_SC_ENTER ||
@@ -6007,6 +6111,22 @@ U0 A2600ApplyControllerHints(I64 crc)
   }
   if (A2600Z26CRCLookup(crc,a2600_stella_atarivox_right))
     A2600SaveKeySetController(TRUE);
+  if (crc==0x0FEBD060) {
+    a2600_left_controller=A2600_CTRL_LIGHTGUN;
+    a2600_controller_lightgun_adjust=7;
+    a2600_controller_lightgun_vadjust=11;
+  }
+  if (crc==0x56E2D735) {
+    a2600_left_controller=A2600_CTRL_LIGHTGUN;
+    a2600_controller_lightgun_adjust=8;
+    a2600_controller_lightgun_vadjust=0;
+  }
+  if (crc==0xDDE8600B) {
+    a2600_left_controller=A2600_CTRL_LIGHTGUN;
+    a2600_controller_lightgun_adjust=9;
+    a2600_controller_lightgun_vadjust=5;
+    a2600_controller_lightgun_wrap=75;
+  }
 }
 
 U0 A2600ApplyCartControllerSignatures(U8 *data,I64 size)
@@ -9129,6 +9249,21 @@ U0 A2600Reset()
   a2600_trakball_port=0;
   a2600_trakball_both=0;
   A2600TrakBallClear;
+  a2600_lightgun_mode=0;
+  a2600_lightgun_port=0;
+  a2600_lightgun_x=80;
+  a2600_lightgun_y=96;
+  a2600_lightgun_cycle=49;
+  a2600_lightgun_line=95;
+  a2600_lightgun_wrap=a2600_controller_lightgun_wrap;
+  a2600_lightgun_adjust=a2600_controller_lightgun_adjust;
+  a2600_lightgun_vadjust=a2600_controller_lightgun_vadjust;
+  if (a2600_left_controller==A2600_CTRL_LIGHTGUN ||
+        a2600_right_controller==A2600_CTRL_LIGHTGUN) {
+    if (a2600_right_controller==A2600_CTRL_LIGHTGUN)
+      a2600_lightgun_port=1;
+    A2600LightgunAim(a2600_lightgun_x,a2600_lightgun_y);
+  }
   a2600_auto_reset=0;
   a2600_joy0_mask=0;
   a2600_joy0_decay=0;
