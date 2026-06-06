@@ -53,6 +53,7 @@ Connect VNC to:
 In TempleOS, mount the transfer disk and run the emulator:
 
 ```c
+ExeFile("C:/Kernel/KernelC.HH");
 ExeFile("C:/Compiler/CompilerB.HH");
 ATAMount(0x47,2,0x1F0,0x3F4,1);
 Cd("G:/");;
