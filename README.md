@@ -53,14 +53,15 @@ Connect VNC to:
 In TempleOS, mount the transfer disk and run the emulator:
 
 ```c
-ExeFile("C:/Kernel/KernelC.HH");
-MountIDEAuto;
+ExeFile("C:/Compiler/CompilerB.HH");
+ATAMount(0x47,2,0x1F0,0x3F4,1);
 Cd("G:/");;
 ExeFile("A2600.HC");
 ```
 
-If the transfer disk appears under a different drive letter, replace `G:` with
-the mounted drive shown by TempleOS.
+The command above mounts the second IDE disk as `G:`. If you use
+`MountIDEAuto` instead, TempleOS may choose a different drive letter; replace
+`G:` with the mounted drive shown by TempleOS.
 
 ## Controls
 

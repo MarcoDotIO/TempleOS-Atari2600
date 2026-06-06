@@ -4403,6 +4403,7 @@ U0 A2600PollInput(I64 advance=TRUE)
   a2600_swcha=A2600QuadTariPins(a2600_swcha);
   a2600_swcha=A2600SaveKeyPins(a2600_swcha);
   a2600_swcha=A2600MindlinkPins(a2600_swcha);
+  a2600_swcha=A2600CompuMatePins(a2600_swcha);
   a2600_swchb=(a2600_swchb_out | (0xFF-a2600_swbch_dir)) & (swchb_pins | a2600_swbch_dir);
 
   if (a2600_fire0_decay>0) {
@@ -4982,6 +4983,8 @@ I64 A2600AnalogINPT(I64 pad)
 
   if (A2600QuadTariPadPresent(pad))
     return A2600QuadTariINPT(pad);
+  if (A2600CompuMatePadPresent(pad))
+    return A2600CompuMateINPT(pad);
   if (A2600AnalogButtonPadPresent(pad))
     return A2600AnalogButtonINPT(pad);
   if (a2600_analog_dump)
@@ -5990,7 +5993,7 @@ U0 A2600FrameNextLine()
         A2600FrameSetState(A2600_FM_WAIT_FRAME_START);
       break;
     case A2600_FM_WAIT_FRAME_START:
-      if (a2600_frame_line_state>=A2600FrameYStart())
+      if (a2600_frame_line_state>=A2600FrameYStart() && !a2600_vblank)
         A2600FrameSetState(A2600_FM_FRAME);
       break;
     case A2600_FM_FRAME:
@@ -6871,6 +6874,7 @@ I64 A2600Read(I64 addr)
     A2600PA7Access;
     r=a&0x07;
     if (r==0) {
+      A2600PollInput(FALSE);
       A2600TrakBallUpdate;
       a2600_swcha=A2600TrakBallPins(a2600_swcha);
       a2600_swcha=A2600QuadTariPins(a2600_swcha);
@@ -6998,6 +7002,10 @@ U0 A2600TIAWrite(I64 tia_addr,I64 val)
       A2600AnalogVBlank(val);
       A2600InputLatchVBlank(val);
       a2600_vblank=val&0x02;
+      if (!a2600_vblank && a2600_vsync_frame_mode &&
+            a2600_frame_state==A2600_FM_WAIT_FRAME_START &&
+            a2600_frame_line_state>=A2600FrameYStart())
+        A2600FrameSetState(A2600_FM_FRAME);
       if (!a2600_vblank && !a2600_vsync_frame_mode &&
             (old_vblank || a2600_visible_y>=A2600_FB_H)) {
         A2600StartVisibleFrame;
