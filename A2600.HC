@@ -3341,39 +3341,11 @@ U0 A2600BallDynCTRLPFWrite(I64 val,I64 old_val)
     a2600_bl_dyn_alive=FALSE;
 }
 
-extern U0 A2600MissileDynBeginScanline;
-extern U0 A2600PlayerDynBeginScanline;
-
 U0 A2600LatchPFReflectMid()
 {
   if (!a2600_pf_reflect_mid_latched) {
     a2600_pf_reflect_latch=a2600_tia[A2600_CTRLPF]&1;
     a2600_pf_reflect_mid_latched=1;
-  }
-}
-
-U0 A2600BeginScanline()
-{
-  I64 old_motion;
-
-  A2600BallDynBeginScanline;
-  A2600PlayerDynBeginScanline;
-  A2600MissileDynBeginScanline;
-  a2600_pf_reflect_latch=a2600_tia[A2600_CTRLPF]&1;
-  a2600_pf_reflect_mid_latched=0;
-  a2600_m0_cosmic_graphics=0;
-  if (a2600_m0_confused) {
-    old_motion=a2600_m0_motion;
-    a2600_m0_motion=17;
-    a2600_m0_x=A2600WrapX(a2600_m0_x-a2600_m0_motion);
-    a2600_m0_motion=old_motion;
-    if ((a2600_tia[A2600_ENAM0]&2) && !(a2600_tia[A2600_RESMP0]&2)) {
-      if ((a2600_cosmic_scanline&3)<2)
-        a2600_m0_cosmic_graphics=0x40;
-      else if ((a2600_cosmic_scanline&3)==2)
-        a2600_m0_cosmic_graphics=0xC0;
-      a2600_cosmic_scanline++;
-    }
   }
 }
 
@@ -4822,6 +4794,31 @@ U0 A2600MissileDynBeginScanline()
   a2600_m_dyn_mask[1]=A2600MissileCopyMask(a2600_tia[A2600_NUSIZ1]);
   a2600_m_dyn_ended[0]=0;
   a2600_m_dyn_ended[1]=0;
+}
+
+U0 A2600BeginScanline()
+{
+  I64 old_motion;
+
+  A2600BallDynBeginScanline;
+  A2600PlayerDynBeginScanline;
+  A2600MissileDynBeginScanline;
+  a2600_pf_reflect_latch=a2600_tia[A2600_CTRLPF]&1;
+  a2600_pf_reflect_mid_latched=0;
+  a2600_m0_cosmic_graphics=0;
+  if (a2600_m0_confused) {
+    old_motion=a2600_m0_motion;
+    a2600_m0_motion=17;
+    a2600_m0_x=A2600WrapX(a2600_m0_x-a2600_m0_motion);
+    a2600_m0_motion=old_motion;
+    if ((a2600_tia[A2600_ENAM0]&2) && !(a2600_tia[A2600_RESMP0]&2)) {
+      if ((a2600_cosmic_scanline&3)<2)
+        a2600_m0_cosmic_graphics=0x40;
+      else if ((a2600_cosmic_scanline&3)==2)
+        a2600_m0_cosmic_graphics=0xC0;
+      a2600_cosmic_scanline++;
+    }
+  }
 }
 
 U0 A2600MissileDynReset(I64 player)

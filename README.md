@@ -53,8 +53,10 @@ Connect VNC to:
 In TempleOS, mount the transfer disk and run the emulator:
 
 ```c
+ExeFile("C:/Kernel/KernelC.HH");
 MountIDEAuto;
-#include "G:/A2600.HC";
+Cd("G:/");;
+ExeFile("A2600.HC");
 ```
 
 If the transfer disk appears under a different drive letter, replace `G:` with
