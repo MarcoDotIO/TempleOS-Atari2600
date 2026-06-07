@@ -35,6 +35,7 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_TIA_COLOR_COUNT       128
 #define A2600_PROG_SIZE     61
 #define A2600_STARPATH_LOAD_SIZE 8448
+#define A2600_CPU_HZ          1193192
 #define A2600_FA2_READ_DELAY_CYCLES 596
 #define A2600_FA2_WRITE_DELAY_CYCLES 120477
 #define A2600_CM_CAS_MIN_SIZE        1540
@@ -45,6 +46,9 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CM_SAVE_MAX_CALIB_GAP   800
 #define A2600_CM_SAVE_TIMEOUT_CYCLES 60000
 #define A2600_SC_TAPE_MAX_SIZE      32768
+#define A2600_SC_WAV_MAX_SIZE      262272
+#define A2600_SC_TAPE_DIGITAL          1
+#define A2600_SC_TAPE_PCM              2
 #define A2600_SCORE_SPLIT_X 80
 #define A2600_PADDLE_MIN_CYCLES     (1*76)
 #define A2600_PADDLE_CHARGE_CYCLES (379*76)
@@ -548,7 +552,8 @@ I64 a2600_audio_capture_count,a2600_audio_capture_stereo_count,
 I64 a2600_sc_slice0,a2600_sc_slice1,a2600_sc_control,a2600_sc_start;
 I64 a2600_sc_header_ok,a2600_sc_page_ok,a2600_sc_last_load;
 I64 a2600_sc_prev_addr,a2600_sc_ram_byte,a2600_sc_addr_count,a2600_sc_write_enable;
-I64 a2600_sc_tape_loaded,a2600_sc_tape_size,a2600_sc_tape_pos;
+I64 a2600_sc_tape_loaded,a2600_sc_tape_size,a2600_sc_tape_pos,
+    a2600_sc_tape_mode,a2600_sc_tape_rate,a2600_sc_tape_cycle0;
 I64 a2600_line_x,a2600_tia_cycle,a2600_hmove_blank_x,a2600_hmove_blank_next,
       a2600_hmove_cycle;
 I64 a2600_p0_x,a2600_p1_x,a2600_m0_x,a2600_m1_x,a2600_bl_x;
@@ -1071,6 +1076,7 @@ U0 A2600SCInit()
   a2600_sc_addr_count=7;
   a2600_sc_write_enable=0;
   a2600_sc_tape_pos=0;
+  a2600_sc_tape_cycle0=A2600AccessCycle();
   for (i=0;i<0x1800;i++)
     a2600_cart_ram[i]=0x52;
   A2600SCLoadIndex(0);
@@ -1150,11 +1156,29 @@ Bool A2600SCJAM()
 
 I64 A2600SCReadAudioInput()
 {
-  I64 bit,v;
+  I64 bit,v,cyc,idx;
 
   bit=a2600_swchb&0x80;
   if (a2600_sc_tape_loaded) {
-    if (a2600_sc_tape_pos<a2600_sc_tape_size) {
+    if (a2600_sc_tape_mode==A2600_SC_TAPE_PCM) {
+      if (a2600_sc_tape_rate>0) {
+        cyc=A2600AccessCycle()-a2600_sc_tape_cycle0;
+        if (cyc<0)
+          cyc=0;
+        idx=(cyc*a2600_sc_tape_rate)/A2600_CPU_HZ;
+      } else
+        idx=a2600_sc_tape_pos++;
+      if (idx>=0 && idx<a2600_sc_tape_size) {
+        a2600_sc_tape_pos=idx+1;
+        if (a2600_sc_tape[idx]&0x80)
+          bit=0x80;
+        else
+          bit=0;
+      } else {
+        a2600_sc_tape_pos=a2600_sc_tape_size;
+        bit=0x80;
+      }
+    } else if (a2600_sc_tape_pos<a2600_sc_tape_size) {
       v=a2600_sc_tape[a2600_sc_tape_pos++]&0xFF;
       if (v&0x81)
         bit=0x80;
@@ -1171,25 +1195,64 @@ U0 A2600SCResetTape()
   a2600_sc_tape_loaded=FALSE;
   a2600_sc_tape_size=0;
   a2600_sc_tape_pos=0;
+  a2600_sc_tape_mode=0;
+  a2600_sc_tape_rate=0;
+  a2600_sc_tape_cycle0=0;
   a2600_sc_tape_path[0]=0;
 }
 
-Bool A2600SCLoadTapeSidecar(U8 *filename)
+I64 A2600SCU16(U8 *data,I64 off)
+{
+  return (data[off]&0xFF)|((data[off+1]&0xFF)<<8);
+}
+
+I64 A2600SCU32(U8 *data,I64 off)
+{
+  return A2600SCU16(data,off)|(A2600SCU16(data,off+2)<<16);
+}
+
+Bool A2600SCChunkIs(U8 *data,I64 off,I64 a,I64 b,I64 c,I64 d)
+{
+  return data[off]==a && data[off+1]==b && data[off+2]==c && data[off+3]==d;
+}
+
+I64 A2600SCWavLevel(U8 *data,I64 pos,I64 bits,I64 channels)
+{
+  I64 s0,s1;
+
+  if (bits==8) {
+    s0=data[pos]&0xFF;
+    if (channels>1) {
+      s1=data[pos+1]&0xFF;
+      s0=(s0+s1)>>1;
+    }
+    if (s0>=0x80)
+      return 0x80;
+    return 0;
+  }
+
+  s0=A2600SCU16(data,pos);
+  if (s0&0x8000)
+    s0=s0-0x10000;
+  if (channels>1) {
+    s1=A2600SCU16(data,pos+2);
+    if (s1&0x8000)
+      s1=s1-0x10000;
+    s0=(s0+s1)/2;
+  }
+  if (s0>=0)
+    return 0x80;
+  return 0;
+}
+
+Bool A2600SCLoadTapeDigital(U8 *path)
 {
   U8 *data;
   I64 size,i;
 
-  A2600SCResetTape;
-  if (!filename || !*filename)
+  if (!FileFind(path,,FUF_JUST_FILES))
     return FALSE;
-  if (StrLen(filename)>=A2600_CART_PATH_MAX-5)
-    return FALSE;
-  StrCpy(a2600_sc_tape_path,filename);
-  FileExtRem(a2600_sc_tape_path);
-  CatPrint(a2600_sc_tape_path,".SCT");
-  if (!FileFind(a2600_sc_tape_path,,FUF_JUST_FILES))
-    return FALSE;
-  data=FileRead(a2600_sc_tape_path,&size);
+  data=FileRead(path,&size);
   if (!data)
     return FALSE;
   if (size<=0 || size>A2600_SC_TAPE_MAX_SIZE) {
@@ -1201,8 +1264,109 @@ Bool A2600SCLoadTapeSidecar(U8 *filename)
   Free(data);
   a2600_sc_tape_size=size;
   a2600_sc_tape_pos=0;
+  a2600_sc_tape_mode=A2600_SC_TAPE_DIGITAL;
+  a2600_sc_tape_rate=0;
+  a2600_sc_tape_cycle0=A2600AccessCycle();
   a2600_sc_tape_loaded=TRUE;
   return TRUE;
+}
+
+Bool A2600SCLoadTapeWav(U8 *path)
+{
+  U8 *data;
+  I64 size,off,chunk,fmt_pos,data_pos,data_size,fmt_tag,channels,rate,bits,
+      block,frames,i,pos;
+
+  if (!FileFind(path,,FUF_JUST_FILES))
+    return FALSE;
+  data=FileRead(path,&size);
+  if (!data)
+    return FALSE;
+  if (size<44 || size>A2600_SC_WAV_MAX_SIZE) {
+    Free(data);
+    return FALSE;
+  }
+  if (!A2600SCChunkIs(data,0,'R','I','F','F') ||
+        !A2600SCChunkIs(data,8,'W','A','V','E')) {
+    Free(data);
+    return FALSE;
+  }
+
+  fmt_pos=-1;
+  data_pos=-1;
+  data_size=0;
+  off=12;
+  while (off+8<=size) {
+    chunk=A2600SCU32(data,off+4);
+    if (chunk<0 || off+8+chunk>size)
+      break;
+    if (A2600SCChunkIs(data,off,'f','m','t',' ') && chunk>=16)
+      fmt_pos=off+8;
+    if (A2600SCChunkIs(data,off,'d','a','t','a')) {
+      data_pos=off+8;
+      data_size=chunk;
+      break;
+    }
+    off=off+8+chunk;
+    if (off&1)
+      off++;
+  }
+  if (fmt_pos<0 || data_pos<0 || data_size<=0) {
+    Free(data);
+    return FALSE;
+  }
+
+  fmt_tag=A2600SCU16(data,fmt_pos);
+  channels=A2600SCU16(data,fmt_pos+2);
+  rate=A2600SCU32(data,fmt_pos+4);
+  bits=A2600SCU16(data,fmt_pos+14);
+  if (fmt_tag!=1 || channels<1 || channels>2 ||
+        (bits!=8 && bits!=16) || rate<=0) {
+    Free(data);
+    return FALSE;
+  }
+  block=channels*(bits>>3);
+  if (block<=0) {
+    Free(data);
+    return FALSE;
+  }
+  frames=data_size/block;
+  if (frames>A2600_SC_TAPE_MAX_SIZE)
+    frames=A2600_SC_TAPE_MAX_SIZE;
+  if (frames<=0) {
+    Free(data);
+    return FALSE;
+  }
+  for (i=0;i<frames;i++) {
+    pos=data_pos+i*block;
+    a2600_sc_tape[i]=A2600SCWavLevel(data,pos,bits,channels);
+  }
+  Free(data);
+  a2600_sc_tape_size=frames;
+  a2600_sc_tape_pos=0;
+  a2600_sc_tape_mode=A2600_SC_TAPE_PCM;
+  a2600_sc_tape_rate=rate;
+  a2600_sc_tape_cycle0=A2600AccessCycle();
+  a2600_sc_tape_loaded=TRUE;
+  return TRUE;
+}
+
+Bool A2600SCLoadTapeSidecar(U8 *filename)
+{
+  A2600SCResetTape;
+  if (!filename || !*filename)
+    return FALSE;
+  if (StrLen(filename)>=A2600_CART_PATH_MAX-5)
+    return FALSE;
+  StrCpy(a2600_sc_tape_path,filename);
+  FileExtRem(a2600_sc_tape_path);
+  CatPrint(a2600_sc_tape_path,".SCT");
+  if (A2600SCLoadTapeDigital(a2600_sc_tape_path))
+    return TRUE;
+  StrCpy(a2600_sc_tape_path,filename);
+  FileExtRem(a2600_sc_tape_path);
+  CatPrint(a2600_sc_tape_path,".WAV");
+  return A2600SCLoadTapeWav(a2600_sc_tape_path);
 }
 
 U0 A2600WDSetBank(I64 bank)
