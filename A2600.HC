@@ -10161,7 +10161,7 @@ U0 Atari2600Proof()
     while (!done) {
       if (A2600DrainInputKeys() || a2600_quit_requested)
         done=TRUE;
-      Sleep(8);
+      Sleep(4);
     }
   } catch
     PutExcept;
