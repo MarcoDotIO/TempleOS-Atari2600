@@ -12,6 +12,8 @@ Supercharger, FA2, EF/DF/BF families, MDM, WD/WDSW, WF8, and others.
 The Supercharger path includes the generic `$1FF9` tape/audio input surface
 mapped to the right-difficulty switch; full cassette audio file sampling is not
 implemented.
+The TIA audio core creates mixed samples into an internal ring buffer, while
+TempleOS playback still uses a coarse one-tone `Snd()` PC-speaker fallback.
 
 ## Files
 

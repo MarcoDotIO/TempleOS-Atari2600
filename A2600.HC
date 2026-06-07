@@ -146,6 +146,8 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CART_FA2 32
 #define A2600_CART_CM  33
 
+#define A2600_AUDIO_BUF_SIZE 512
+
 #define A2600_F_C 0x01
 #define A2600_F_Z 0x02
 #define A2600_F_I 0x04
@@ -530,6 +532,8 @@ I64 a2600_audio_counter,a2600_audio_clock_enable[2],
     a2600_audio_pulse_hold[2],a2600_audio_div_counter[2],
     a2600_audio_pulse_counter[2],a2600_audio_noise_counter[2],
     a2600_audio_sum0,a2600_audio_sum1,a2600_audio_sum_ct;
+I64 a2600_audio_buf[A2600_AUDIO_BUF_SIZE],a2600_audio_buf_r,
+    a2600_audio_buf_w,a2600_audio_buf_count,a2600_audio_buf_overrun;
 I64 a2600_sc_slice0,a2600_sc_slice1,a2600_sc_control,a2600_sc_start;
 I64 a2600_sc_prev_addr,a2600_sc_ram_byte,a2600_sc_addr_count,a2600_sc_write_enable;
 I64 a2600_line_x,a2600_tia_cycle,a2600_hmove_blank_x,a2600_hmove_blank_next,
@@ -6407,6 +6411,42 @@ U0 A2600RSync()
   A2600AdvanceScanline;
 }
 
+U0 A2600AudioQueueReset()
+{
+  I64 i;
+
+  for (i=0;i<A2600_AUDIO_BUF_SIZE;i++)
+    a2600_audio_buf[i]=0;
+  a2600_audio_buf_r=0;
+  a2600_audio_buf_w=0;
+  a2600_audio_buf_count=0;
+  a2600_audio_buf_overrun=0;
+}
+
+U0 A2600AudioQueueSample(I64 sample)
+{
+  a2600_audio_buf[a2600_audio_buf_w]=sample&0xFF;
+  a2600_audio_buf_w=(a2600_audio_buf_w+1)&(A2600_AUDIO_BUF_SIZE-1);
+  if (a2600_audio_buf_count<A2600_AUDIO_BUF_SIZE)
+    a2600_audio_buf_count++;
+  else {
+    a2600_audio_buf_r=(a2600_audio_buf_r+1)&(A2600_AUDIO_BUF_SIZE-1);
+    a2600_audio_buf_overrun++;
+  }
+}
+
+I64 A2600AudioQueueRead()
+{
+  I64 sample;
+
+  if (!a2600_audio_buf_count)
+    return -1;
+  sample=a2600_audio_buf[a2600_audio_buf_r]&0xFF;
+  a2600_audio_buf_r=(a2600_audio_buf_r+1)&(A2600_AUDIO_BUF_SIZE-1);
+  a2600_audio_buf_count--;
+  return sample;
+}
+
 U0 A2600AudioReset()
 {
   I64 i;
@@ -6436,6 +6476,7 @@ U0 A2600AudioReset()
   a2600_audio_sum0=0;
   a2600_audio_sum1=0;
   a2600_audio_sum_ct=0;
+  A2600AudioQueueReset;
 }
 
 I64 A2600AudioVol(I64 chan)
@@ -6613,6 +6654,7 @@ U0 A2600AudioCreateSample()
           (a2600_audio_out[1]&0x0F);
   } else
     a2600_audio_sample=(a2600_audio_out[0]+a2600_audio_out[1])&0xFF;
+  A2600AudioQueueSample(a2600_audio_sample);
 }
 
 U0 A2600AudioTick()
