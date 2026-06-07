@@ -11,13 +11,14 @@ SC/SARA, E0, 0840, 0FA0, 03E0, 3F/3E, E7, FA, FE, DPC/Pitfall II,
 Supercharger, FA2, EF/DF/BF families, MDM, WD/WDSW, WF8, and others.
 The Supercharger path includes the generic `$1FF9` tape/audio input surface
 mapped to the right-difficulty switch, tracks 8448-byte load header/page
-checksum validity, and can read optional `.SCT` digital tape-level or `.WAV`
-PCM sidecars beside a Supercharger ROM. In `.SCT` files, bytes with bit 7 or
+checksum validity, and can read optional `.SCT` digital tape-level or
+range-centered `.WAV` PCM sidecars beside a Supercharger ROM. In `.SCT` files,
+bytes with bit 7 or
 bit 0 set feed a high tape level and zero bytes feed a low tape level. `.WAV`
 sidecars are RIFF/WAVE PCM, mono or stereo, unsigned 8-bit or signed 16-bit;
-the emulator thresholds the waveform and samples it from emulated CPU cycles
-using the WAV sample rate. Full FSK cassette recovery from arbitrary analog
-recordings is not implemented.
+the emulator thresholds the loaded waveform at its sample-range midpoint and
+samples it from emulated CPU cycles using the WAV sample rate. Full arbitrary
+analog cassette cleanup and FSK recovery is not implemented.
 The TIA audio core creates mixed samples into an internal ring buffer and can
 dump a short mono raw capture with `A2600AudioCaptureStart` plus
 `A2600AudioCaptureWrite` or a mono 8-bit PCM WAV with

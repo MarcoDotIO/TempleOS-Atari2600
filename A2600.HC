@@ -1230,7 +1230,7 @@ Bool A2600SCChunkIs(U8 *data,I64 off,I64 a,I64 b,I64 c,I64 d)
   return data[off]==a && data[off+1]==b && data[off+2]==c && data[off+3]==d;
 }
 
-I64 A2600SCWavLevel(U8 *data,I64 pos,I64 bits,I64 channels)
+I64 A2600SCWavSample(U8 *data,I64 pos,I64 bits,I64 channels)
 {
   I64 s0,s1;
 
@@ -1240,9 +1240,7 @@ I64 A2600SCWavLevel(U8 *data,I64 pos,I64 bits,I64 channels)
       s1=data[pos+1]&0xFF;
       s0=(s0+s1)>>1;
     }
-    if (s0>=0x80)
-      return 0x80;
-    return 0;
+    return s0-0x80;
   }
 
   s0=A2600SCU16(data,pos);
@@ -1254,7 +1252,12 @@ I64 A2600SCWavLevel(U8 *data,I64 pos,I64 bits,I64 channels)
       s1=s1-0x10000;
     s0=(s0+s1)/2;
   }
-  if (s0>=0)
+  return s0;
+}
+
+I64 A2600SCWavLevel(U8 *data,I64 pos,I64 bits,I64 channels,I64 center)
+{
+  if (A2600SCWavSample(data,pos,bits,channels)>=center)
     return 0x80;
   return 0;
 }
@@ -1289,7 +1292,7 @@ Bool A2600SCLoadTapeWav(U8 *path)
 {
   U8 *data;
   I64 size,off,chunk,fmt_pos,data_pos,data_size,fmt_tag,channels,rate,bits,
-      block,frames,i,pos;
+      block,frames,i,pos,sample,min_sample,max_sample,center;
 
   if (!FileFind(path,,FUF_JUST_FILES))
     return FALSE;
@@ -1351,9 +1354,20 @@ Bool A2600SCLoadTapeWav(U8 *path)
     Free(data);
     return FALSE;
   }
+  min_sample=0x7FFFFFFF;
+  max_sample=-0x7FFFFFFF;
   for (i=0;i<frames;i++) {
     pos=data_pos+i*block;
-    a2600_sc_tape[i]=A2600SCWavLevel(data,pos,bits,channels);
+    sample=A2600SCWavSample(data,pos,bits,channels);
+    if (sample<min_sample)
+      min_sample=sample;
+    if (sample>max_sample)
+      max_sample=sample;
+  }
+  center=(min_sample+max_sample)/2;
+  for (i=0;i<frames;i++) {
+    pos=data_pos+i*block;
+    a2600_sc_tape[i]=A2600SCWavLevel(data,pos,bits,channels,center);
   }
   Free(data);
   a2600_sc_tape_size=frames;
