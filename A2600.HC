@@ -1008,6 +1008,9 @@ Bool A2600SCLoadIndex(I64 load)
       a2600_cart_ram[i]=a2600_rom[i];
     a2600_sc_start=a2600_rom[0x17FC]+(a2600_rom[0x17FD]<<8);
     a2600_sc_control=0x0D;
+    a2600_ram[0x7E]=a2600_sc_start&0xFF;
+    a2600_ram[0x7F]=(a2600_sc_start>>8)&0xFF;
+    a2600_ram[0]=a2600_sc_control&0xFF;
     A2600SCSetScheme;
     return TRUE;
   }
@@ -1038,6 +1041,9 @@ Bool A2600SCLoadIndex(I64 load)
 
   a2600_sc_start=a2600_rom[base+0x2000]+(a2600_rom[base+0x2001]<<8);
   a2600_sc_control=a2600_rom[base+0x2002];
+  a2600_ram[0x7E]=a2600_rom[base+0x2000]&0xFF;
+  a2600_ram[0x7F]=a2600_rom[base+0x2001]&0xFF;
+  a2600_ram[0]=a2600_sc_control&0xFF;
   A2600SCSetScheme;
   return a2600_sc_start!=0;
 }
