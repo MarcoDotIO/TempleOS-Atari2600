@@ -535,6 +535,7 @@ I64 a2600_audio_counter,a2600_audio_clock_enable[2],
 I64 a2600_audio_buf[A2600_AUDIO_BUF_SIZE],a2600_audio_buf_r,
     a2600_audio_buf_w,a2600_audio_buf_count,a2600_audio_buf_overrun;
 I64 a2600_sc_slice0,a2600_sc_slice1,a2600_sc_control,a2600_sc_start;
+I64 a2600_sc_header_ok,a2600_sc_page_ok,a2600_sc_last_load;
 I64 a2600_sc_prev_addr,a2600_sc_ram_byte,a2600_sc_addr_count,a2600_sc_write_enable;
 I64 a2600_line_x,a2600_tia_cycle,a2600_hmove_blank_x,a2600_hmove_blank_next,
       a2600_hmove_cycle;
@@ -966,11 +967,23 @@ U0 A2600SCSetScheme()
   }
 }
 
+I64 A2600SCSum(I64 base,I64 len)
+{
+  I64 i,sum=0;
+
+  for (i=0;i<len;i++)
+    sum=(sum+(a2600_rom[base+i]&0xFF))&0xFF;
+  return sum;
+}
+
 Bool A2600SCLoadIndex(I64 load)
 {
-  I64 base,pagecount,i,j,pagebyte,pageadr;
+  I64 base,pagecount,i,j,pagebyte,pageadr,pagesum;
 
   if (a2600_cart_size==6144) {
+    a2600_sc_header_ok=TRUE;
+    a2600_sc_page_ok=TRUE;
+    a2600_sc_last_load=load;
     for (i=0;i<0x1800;i++)
       a2600_cart_ram[i]=a2600_rom[i];
     a2600_sc_start=a2600_rom[0x17FC]+(a2600_rom[0x17FD]<<8);
@@ -979,15 +992,23 @@ Bool A2600SCLoadIndex(I64 load)
     return TRUE;
   }
 
+  a2600_sc_header_ok=FALSE;
+  a2600_sc_page_ok=TRUE;
+  a2600_sc_last_load=load;
   base=load*A2600_STARPATH_LOAD_SIZE;
   if (base+0x2100>a2600_cart_size)
     return FALSE;
 
+  a2600_sc_header_ok=(A2600SCSum(base+0x2000,8)==0x55);
   pagecount=a2600_rom[base+0x2003]&0xFF;
   if (pagecount>32)
     pagecount=32;
   for (i=0;i<pagecount;i++) {
     pagebyte=a2600_rom[base+0x2010+i]&0xFF;
+    pagesum=(A2600SCSum(base+(i*256),256)+pagebyte+
+          (a2600_rom[base+0x2040+i]&0xFF))&0xFF;
+    if (pagesum!=0x55)
+      a2600_sc_page_ok=FALSE;
     pageadr=((pagebyte&3)*0x800)+(((pagebyte&0x1F)>>2)*256);
     if (pageadr+256<=0x1800) {
       for (j=0;j<256;j++)
@@ -1027,6 +1048,9 @@ U0 A2600SCInit()
   a2600_sc_slice1=0x1800;
   a2600_sc_control=0;
   a2600_sc_start=0;
+  a2600_sc_header_ok=FALSE;
+  a2600_sc_page_ok=FALSE;
+  a2600_sc_last_load=-1;
   a2600_sc_prev_addr=0;
   a2600_sc_ram_byte=0;
   a2600_sc_addr_count=7;
