@@ -20,8 +20,10 @@ using the WAV sample rate. Full FSK cassette recovery from arbitrary analog
 recordings is not implemented.
 The TIA audio core creates mixed samples into an internal ring buffer and can
 dump a short mono raw capture with `A2600AudioCaptureStart` plus
-`A2600AudioCaptureWrite`. The same capture pass also records interleaved TIA
-channel bytes with `A2600AudioCaptureWriteStereo` to `AUD2CH.BIN`; TempleOS
+`A2600AudioCaptureWrite` or a mono 8-bit PCM WAV with
+`A2600AudioCaptureWriteWav` to `AUDRAW.WAV`. The same capture pass also records
+interleaved TIA channel bytes with `A2600AudioCaptureWriteStereo` to
+`AUD2CH.BIN` or `A2600AudioCaptureWriteStereoWav` to `AUD2CH.WAV`; TempleOS
 playback still uses a coarse one-tone `Snd()` PC-speaker fallback.
 
 ## Files

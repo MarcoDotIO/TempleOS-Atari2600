@@ -153,6 +153,7 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CART_CM  33
 
 #define A2600_AUDIO_BUF_SIZE 512
+#define A2600_AUDIO_WAV_HZ 31400
 #define A2600_AUDIO_CAPTURE_SIZE 8192
 #define A2600_AUDIO_CAPTURE_STEREO_SIZE 16384
 
@@ -6843,6 +6844,113 @@ Bool A2600AudioCaptureWriteStereo(U8 *path="AUD2CH.BIN")
     return FALSE;
   return FileWrite(path,a2600_audio_capture_stereo,
         a2600_audio_capture_stereo_count);
+}
+
+U0 A2600WavPutU16(U8 *buf,I64 off,I64 v)
+{
+  buf[off]=v&0xFF;
+  buf[off+1]=(v>>8)&0xFF;
+}
+
+U0 A2600WavPutU32(U8 *buf,I64 off,I64 v)
+{
+  buf[off]=v&0xFF;
+  buf[off+1]=(v>>8)&0xFF;
+  buf[off+2]=(v>>16)&0xFF;
+  buf[off+3]=(v>>24)&0xFF;
+}
+
+U0 A2600WavHeader(U8 *buf,I64 data_size,I64 channels,I64 rate)
+{
+  buf[0]='R'; buf[1]='I'; buf[2]='F'; buf[3]='F';
+  A2600WavPutU32(buf,4,data_size+36);
+  buf[8]='W'; buf[9]='A'; buf[10]='V'; buf[11]='E';
+  buf[12]='f'; buf[13]='m'; buf[14]='t'; buf[15]=' ';
+  A2600WavPutU32(buf,16,16);
+  A2600WavPutU16(buf,20,1);
+  A2600WavPutU16(buf,22,channels);
+  A2600WavPutU32(buf,24,rate);
+  A2600WavPutU32(buf,28,rate*channels);
+  A2600WavPutU16(buf,32,channels);
+  A2600WavPutU16(buf,34,8);
+  buf[36]='d'; buf[37]='a'; buf[38]='t'; buf[39]='a';
+  A2600WavPutU32(buf,40,data_size);
+}
+
+I64 A2600AudioCapturePeak(U8 *data,I64 count,I64 stride)
+{
+  I64 i,v,peak=0;
+
+  if (stride<=0)
+    stride=1;
+  for (i=0;i<count;i+=stride) {
+    v=data[i]&0xFF;
+    if (v>peak)
+      peak=v;
+  }
+  if (peak<1)
+    peak=1;
+  return peak;
+}
+
+I64 A2600AudioScaleWav8(I64 v,I64 peak)
+{
+  if (v<0)
+    v=0;
+  if (peak<1)
+    peak=1;
+  if (v>peak)
+    v=peak;
+  return 0x80+(v*0x7F)/peak;
+}
+
+Bool A2600AudioCaptureWriteWav(U8 *path="AUDRAW.WAV")
+{
+  U8 *buf;
+  I64 i,size,peak;
+  Bool ok;
+
+  A2600AudioCaptureStop;
+  if (a2600_audio_capture_count<=0)
+    return FALSE;
+  size=44+a2600_audio_capture_count;
+  buf=CAlloc(size);
+  if (!buf)
+    return FALSE;
+  A2600WavHeader(buf,a2600_audio_capture_count,1,A2600_AUDIO_WAV_HZ);
+  peak=A2600AudioCapturePeak(a2600_audio_capture,
+        a2600_audio_capture_count,1);
+  for (i=0;i<a2600_audio_capture_count;i++)
+    buf[44+i]=A2600AudioScaleWav8(a2600_audio_capture[i]&0xFF,peak);
+  ok=FileWrite(path,buf,size);
+  Free(buf);
+  return ok;
+}
+
+Bool A2600AudioCaptureWriteStereoWav(U8 *path="AUD2CH.WAV")
+{
+  U8 *buf;
+  I64 i,count,size,peak0,peak1;
+  Bool ok;
+
+  A2600AudioCaptureStop;
+  count=a2600_audio_capture_stereo_count&~1;
+  if (count<=0)
+    return FALSE;
+  size=44+count;
+  buf=CAlloc(size);
+  if (!buf)
+    return FALSE;
+  A2600WavHeader(buf,count,2,A2600_AUDIO_WAV_HZ);
+  peak0=A2600AudioCapturePeak(a2600_audio_capture_stereo,count,2);
+  peak1=A2600AudioCapturePeak(a2600_audio_capture_stereo+1,count-1,2);
+  for (i=0;i<count;i+=2) {
+    buf[44+i]=A2600AudioScaleWav8(a2600_audio_capture_stereo[i]&0xFF,peak0);
+    buf[45+i]=A2600AudioScaleWav8(a2600_audio_capture_stereo[i+1]&0xFF,peak1);
+  }
+  ok=FileWrite(path,buf,size);
+  Free(buf);
+  return ok;
 }
 
 U0 A2600AudioCaptureStereoSample(I64 left,I64 right)
