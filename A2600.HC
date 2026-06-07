@@ -996,9 +996,9 @@ I64 A2600SCSum(I64 base,I64 len)
   return sum;
 }
 
-Bool A2600SCLoadIndex(I64 load)
+Bool A2600SCLoadIndex(I64 load,Bool apply_scheme=TRUE)
 {
-  I64 base,pagecount,i,j,pagebyte,pageadr,pagesum;
+  I64 base,pagecount,i,j,pagebyte,pageadr,pagesum,control;
 
   if (a2600_cart_size==6144) {
     a2600_sc_header_ok=TRUE;
@@ -1007,11 +1007,14 @@ Bool A2600SCLoadIndex(I64 load)
     for (i=0;i<0x1800;i++)
       a2600_cart_ram[i]=a2600_rom[i];
     a2600_sc_start=a2600_rom[0x17FC]+(a2600_rom[0x17FD]<<8);
-    a2600_sc_control=0x0D;
+    control=0x0D;
     a2600_ram[0x7E]=a2600_sc_start&0xFF;
     a2600_ram[0x7F]=(a2600_sc_start>>8)&0xFF;
-    a2600_ram[0]=a2600_sc_control&0xFF;
-    A2600SCSetScheme;
+    a2600_ram[0]=control&0xFF;
+    if (apply_scheme) {
+      a2600_sc_control=control;
+      A2600SCSetScheme;
+    }
     return TRUE;
   }
 
@@ -1040,20 +1043,23 @@ Bool A2600SCLoadIndex(I64 load)
   }
 
   a2600_sc_start=a2600_rom[base+0x2000]+(a2600_rom[base+0x2001]<<8);
-  a2600_sc_control=a2600_rom[base+0x2002];
+  control=a2600_rom[base+0x2002]&0xFF;
   a2600_ram[0x7E]=a2600_rom[base+0x2000]&0xFF;
   a2600_ram[0x7F]=a2600_rom[base+0x2001]&0xFF;
-  a2600_ram[0]=a2600_sc_control&0xFF;
-  A2600SCSetScheme;
+  a2600_ram[0]=control&0xFF;
+  if (apply_scheme) {
+    a2600_sc_control=control;
+    A2600SCSetScheme;
+  }
   return a2600_sc_start!=0;
 }
 
-Bool A2600SCLoadNumber(I64 num)
+Bool A2600SCLoadNumber(I64 num,Bool apply_scheme=TRUE)
 {
   I64 i,loads,found;
 
   if (a2600_cart_size==6144)
-    return A2600SCLoadIndex(0);
+    return A2600SCLoadIndex(0,apply_scheme);
 
   loads=a2600_cart_size/A2600_STARPATH_LOAD_SIZE;
   found=-1;
@@ -1063,7 +1069,7 @@ Bool A2600SCLoadNumber(I64 num)
   }
   if (found<0)
     return FALSE;
-  return A2600SCLoadIndex(found);
+  return A2600SCLoadIndex(found,apply_scheme);
 }
 
 U0 A2600SCInit()
@@ -2868,7 +2874,7 @@ I64 A2600ReadCart(I64 a)
     if (off==0x0FF9)
       return A2600SCReadAudioInput;
     if ((a&0x1FFF)==0x1850 && a2600_sc_slice1==0x1800)
-      A2600SCLoadNumber(a2600_ram[0]);
+      A2600SCLoadNumber(a2600_ram[0],FALSE);
     if (off&0x0800)
       idx=a2600_sc_slice1+(off&0x07FF);
     else
