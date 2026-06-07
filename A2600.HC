@@ -44,6 +44,7 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CM_SAVE_MIN_FSK_GAP     150
 #define A2600_CM_SAVE_MAX_CALIB_GAP   800
 #define A2600_CM_SAVE_TIMEOUT_CYCLES 60000
+#define A2600_SC_TAPE_MAX_SIZE      32768
 #define A2600_SCORE_SPLIT_X 80
 #define A2600_PADDLE_MIN_CYCLES     (1*76)
 #define A2600_PADDLE_CHARGE_CYCLES (379*76)
@@ -228,6 +229,8 @@ U8 a2600_rom[A2600_ROM_SIZE],a2600_ram[A2600_RAM_SIZE],
    a2600_savekey_packet[A2600_SAVEKEY_PACKET_MAX],
    a2600_compumate_cas[A2600_CM_CAS_MAX_SIZE],
    a2600_compumate_cas_path[A2600_CART_PATH_MAX],
+   a2600_sc_tape[A2600_SC_TAPE_MAX_SIZE],
+   a2600_sc_tape_path[A2600_CART_PATH_MAX],
    a2600_tia[64],a2600_coll[8],
    a2600_fb[A2600_FB_W*A2600_FB_H],a2600_prev_fb[A2600_FB_W*A2600_FB_H],
    a2600_audio_capture[A2600_AUDIO_CAPTURE_SIZE];
@@ -542,6 +545,7 @@ I64 a2600_audio_capture_count,a2600_audio_capture_active,
 I64 a2600_sc_slice0,a2600_sc_slice1,a2600_sc_control,a2600_sc_start;
 I64 a2600_sc_header_ok,a2600_sc_page_ok,a2600_sc_last_load;
 I64 a2600_sc_prev_addr,a2600_sc_ram_byte,a2600_sc_addr_count,a2600_sc_write_enable;
+I64 a2600_sc_tape_loaded,a2600_sc_tape_size,a2600_sc_tape_pos;
 I64 a2600_line_x,a2600_tia_cycle,a2600_hmove_blank_x,a2600_hmove_blank_next,
       a2600_hmove_cycle;
 I64 a2600_p0_x,a2600_p1_x,a2600_m0_x,a2600_m1_x,a2600_bl_x;
@@ -1063,6 +1067,7 @@ U0 A2600SCInit()
   a2600_sc_ram_byte=0;
   a2600_sc_addr_count=7;
   a2600_sc_write_enable=0;
+  a2600_sc_tape_pos=0;
   for (i=0;i<0x1800;i++)
     a2600_cart_ram[i]=0x52;
   A2600SCLoadIndex(0);
@@ -1142,7 +1147,59 @@ Bool A2600SCJAM()
 
 I64 A2600SCReadAudioInput()
 {
-  return A2600Bus((a2600_bus&0x7F)|(a2600_swchb&0x80));
+  I64 bit,v;
+
+  bit=a2600_swchb&0x80;
+  if (a2600_sc_tape_loaded) {
+    if (a2600_sc_tape_pos<a2600_sc_tape_size) {
+      v=a2600_sc_tape[a2600_sc_tape_pos++]&0xFF;
+      if (v&0x81)
+        bit=0x80;
+      else
+        bit=0;
+    } else
+      bit=0x80;
+  }
+  return A2600Bus((a2600_bus&0x7F)|bit);
+}
+
+U0 A2600SCResetTape()
+{
+  a2600_sc_tape_loaded=FALSE;
+  a2600_sc_tape_size=0;
+  a2600_sc_tape_pos=0;
+  a2600_sc_tape_path[0]=0;
+}
+
+Bool A2600SCLoadTapeSidecar(U8 *filename)
+{
+  U8 *data;
+  I64 size,i;
+
+  A2600SCResetTape;
+  if (!filename || !*filename)
+    return FALSE;
+  if (StrLen(filename)>=A2600_CART_PATH_MAX-5)
+    return FALSE;
+  StrCpy(a2600_sc_tape_path,filename);
+  FileExtRem(a2600_sc_tape_path);
+  CatPrint(a2600_sc_tape_path,".SCT");
+  if (!FileFind(a2600_sc_tape_path,,FUF_JUST_FILES))
+    return FALSE;
+  data=FileRead(a2600_sc_tape_path,&size);
+  if (!data)
+    return FALSE;
+  if (size<=0 || size>A2600_SC_TAPE_MAX_SIZE) {
+    Free(data);
+    return FALSE;
+  }
+  for (i=0;i<size;i++)
+    a2600_sc_tape[i]=data[i];
+  Free(data);
+  a2600_sc_tape_size=size;
+  a2600_sc_tape_pos=0;
+  a2600_sc_tape_loaded=TRUE;
+  return TRUE;
 }
 
 U0 A2600WDSetBank(I64 bank)
@@ -9239,6 +9296,10 @@ Bool A2600LoadCartPath(U8 *filename)
     A2600CompuMateLoadCassette(filename);
   else
     A2600CompuMateResetCassette;
+  if (a2600_cart_type==A2600_CART_AR)
+    A2600SCLoadTapeSidecar(filename);
+  else
+    A2600SCResetTape;
   if (a2600_cart_type==A2600_CART_FA2) {
     if (size==29696 || size==32768) {
       for (i=0;i<A2600_ROM_SIZE;i++)
@@ -9316,6 +9377,7 @@ U0 A2600LoadROM()
   A2600SetControllerDefaults;
   a2600_cart_super=FALSE;
   a2600_cart_type=A2600_CART_STD;
+  A2600SCResetTape;
   a2600_bank=0;
   if (A2600LoadAutoCartName("CART.BIN"))
     return;

@@ -10,8 +10,11 @@ behavior, and a broad set of cartridge mappers including flat 2K/4K, F8/F6/F4,
 SC/SARA, E0, 0840, 0FA0, 03E0, 3F/3E, E7, FA, FE, DPC/Pitfall II,
 Supercharger, FA2, EF/DF/BF families, MDM, WD/WDSW, WF8, and others.
 The Supercharger path includes the generic `$1FF9` tape/audio input surface
-mapped to the right-difficulty switch and tracks 8448-byte load header/page
-checksum validity; full cassette audio file sampling is not implemented.
+mapped to the right-difficulty switch, tracks 8448-byte load header/page
+checksum validity, and can read an optional `.SCT` digital tape-level sidecar
+beside a Supercharger ROM. In `.SCT` files, bytes with bit 7 or bit 0 set feed
+a high tape level and zero bytes feed a low tape level. Analog cassette waveform
+decoding is not implemented.
 The TIA audio core creates mixed samples into an internal ring buffer and can
 dump a short raw capture with `A2600AudioCaptureStart` plus
 `A2600AudioCaptureWrite`; TempleOS playback still uses a coarse one-tone
