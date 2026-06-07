@@ -6834,7 +6834,9 @@ Bool A2600AudioCaptureWrite(U8 *path="AUDRAW.BIN")
   A2600AudioCaptureStop;
   if (a2600_audio_capture_count<=0)
     return FALSE;
-  return FileWrite(path,a2600_audio_capture,a2600_audio_capture_count);
+  if (FileWrite(path,a2600_audio_capture,a2600_audio_capture_count))
+    return TRUE;
+  return FALSE;
 }
 
 Bool A2600AudioCaptureWriteStereo(U8 *path="AUD2CH.BIN")
@@ -6842,8 +6844,10 @@ Bool A2600AudioCaptureWriteStereo(U8 *path="AUD2CH.BIN")
   A2600AudioCaptureStop;
   if (a2600_audio_capture_stereo_count<=0)
     return FALSE;
-  return FileWrite(path,a2600_audio_capture_stereo,
-        a2600_audio_capture_stereo_count);
+  if (FileWrite(path,a2600_audio_capture_stereo,
+        a2600_audio_capture_stereo_count))
+    return TRUE;
+  return FALSE;
 }
 
 U0 A2600WavPutU16(U8 *buf,I64 off,I64 v)
@@ -6922,7 +6926,9 @@ Bool A2600AudioCaptureWriteWav(U8 *path="AUDRAW.WAV")
         a2600_audio_capture_count,1);
   for (i=0;i<a2600_audio_capture_count;i++)
     buf[44+i]=A2600AudioScaleWav8(a2600_audio_capture[i]&0xFF,peak);
-  ok=FileWrite(path,buf,size);
+  ok=FALSE;
+  if (FileWrite(path,buf,size))
+    ok=TRUE;
   Free(buf);
   return ok;
 }
@@ -6948,7 +6954,9 @@ Bool A2600AudioCaptureWriteStereoWav(U8 *path="AUD2CH.WAV")
     buf[44+i]=A2600AudioScaleWav8(a2600_audio_capture_stereo[i]&0xFF,peak0);
     buf[45+i]=A2600AudioScaleWav8(a2600_audio_capture_stereo[i+1]&0xFF,peak1);
   }
-  ok=FileWrite(path,buf,size);
+  ok=FALSE;
+  if (FileWrite(path,buf,size))
+    ok=TRUE;
   Free(buf);
   return ok;
 }
