@@ -1104,6 +1104,11 @@ Bool A2600SCJAM()
   return FALSE;
 }
 
+I64 A2600SCReadAudioInput()
+{
+  return A2600Bus((a2600_bus&0x7F)|(a2600_swchb&0x80));
+}
+
 U0 A2600WDSetBank(I64 bank)
 {
   bank=bank&7;
@@ -2594,6 +2599,8 @@ I64 A2600ReadCart(I64 a)
   }
 
   if (a2600_cart_type==A2600_CART_AR) {
+    if (off==0x0FF9)
+      return A2600SCReadAudioInput;
     if (off&0x0800)
       idx=a2600_sc_slice1+(off&0x07FF);
     else
