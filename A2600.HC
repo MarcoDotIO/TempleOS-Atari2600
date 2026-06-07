@@ -1048,6 +1048,8 @@ Bool A2600SCLoadNumber(I64 num)
 
   if (a2600_cart_size==6144)
     return A2600SCLoadIndex(0);
+  if (!(num&0xFF))
+    return A2600SCLoadIndex(0);
 
   loads=a2600_cart_size/A2600_STARPATH_LOAD_SIZE;
   found=-1;
@@ -2861,6 +2863,8 @@ I64 A2600ReadCart(I64 a)
   if (a2600_cart_type==A2600_CART_AR) {
     if (off==0x0FF9)
       return A2600SCReadAudioInput;
+    if ((a&0x1FFF)==0x1850 && a2600_sc_slice1==0x1800)
+      A2600SCLoadNumber(a2600_ram[0]);
     if (off&0x0800)
       idx=a2600_sc_slice1+(off&0x07FF);
     else
