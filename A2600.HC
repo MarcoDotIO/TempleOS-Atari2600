@@ -148,6 +148,7 @@ otherwise it falls back to the embedded proof ROM.
 #define A2600_CART_CM  33
 
 #define A2600_AUDIO_BUF_SIZE 512
+#define A2600_AUDIO_CAPTURE_SIZE 8192
 
 #define A2600_F_C 0x01
 #define A2600_F_Z 0x02
@@ -228,7 +229,8 @@ U8 a2600_rom[A2600_ROM_SIZE],a2600_ram[A2600_RAM_SIZE],
    a2600_compumate_cas[A2600_CM_CAS_MAX_SIZE],
    a2600_compumate_cas_path[A2600_CART_PATH_MAX],
    a2600_tia[64],a2600_coll[8],
-   a2600_fb[A2600_FB_W*A2600_FB_H],a2600_prev_fb[A2600_FB_W*A2600_FB_H];
+   a2600_fb[A2600_FB_W*A2600_FB_H],a2600_prev_fb[A2600_FB_W*A2600_FB_H],
+   a2600_audio_capture[A2600_AUDIO_CAPTURE_SIZE];
 
 U8 a2600_prog[A2600_PROG_SIZE]={
   0x78,0xD8,0xA2,0xFF,0x9A,0xE6,0x80,0xA5,
@@ -535,6 +537,8 @@ I64 a2600_audio_counter,a2600_audio_clock_enable[2],
     a2600_audio_sum0,a2600_audio_sum1,a2600_audio_sum_ct;
 I64 a2600_audio_buf[A2600_AUDIO_BUF_SIZE],a2600_audio_buf_r,
     a2600_audio_buf_w,a2600_audio_buf_count,a2600_audio_buf_overrun;
+I64 a2600_audio_capture_count,a2600_audio_capture_active,
+    a2600_audio_capture_overrun;
 I64 a2600_sc_slice0,a2600_sc_slice1,a2600_sc_control,a2600_sc_start;
 I64 a2600_sc_header_ok,a2600_sc_page_ok,a2600_sc_last_load;
 I64 a2600_sc_prev_addr,a2600_sc_ram_byte,a2600_sc_addr_count,a2600_sc_write_enable;
@@ -6561,9 +6565,46 @@ U0 A2600AudioQueueReset()
   a2600_audio_buf_overrun=0;
 }
 
+U0 A2600AudioCaptureClear()
+{
+  I64 i;
+
+  for (i=0;i<A2600_AUDIO_CAPTURE_SIZE;i++)
+    a2600_audio_capture[i]=0;
+  a2600_audio_capture_count=0;
+  a2600_audio_capture_overrun=0;
+}
+
+U0 A2600AudioCaptureStart()
+{
+  A2600AudioCaptureClear;
+  a2600_audio_capture_active=TRUE;
+}
+
+U0 A2600AudioCaptureStop()
+{
+  a2600_audio_capture_active=FALSE;
+}
+
+Bool A2600AudioCaptureWrite(U8 *path="AUDRAW.BIN")
+{
+  A2600AudioCaptureStop;
+  if (a2600_audio_capture_count<=0)
+    return FALSE;
+  return FileWrite(path,a2600_audio_capture,a2600_audio_capture_count);
+}
+
 U0 A2600AudioQueueSample(I64 sample)
 {
-  a2600_audio_buf[a2600_audio_buf_w]=sample&0xFF;
+  sample=sample&0xFF;
+  if (a2600_audio_capture_active) {
+    if (a2600_audio_capture_count<A2600_AUDIO_CAPTURE_SIZE) {
+      a2600_audio_capture[a2600_audio_capture_count]=sample;
+      a2600_audio_capture_count++;
+    } else
+      a2600_audio_capture_overrun++;
+  }
+  a2600_audio_buf[a2600_audio_buf_w]=sample;
   a2600_audio_buf_w=(a2600_audio_buf_w+1)&(A2600_AUDIO_BUF_SIZE-1);
   if (a2600_audio_buf_count<A2600_AUDIO_BUF_SIZE)
     a2600_audio_buf_count++;
@@ -6615,6 +6656,8 @@ U0 A2600AudioReset()
   a2600_audio_sum1=0;
   a2600_audio_sum_ct=0;
   A2600AudioQueueReset;
+  A2600AudioCaptureClear;
+  a2600_audio_capture_active=FALSE;
 }
 
 I64 A2600AudioVol(I64 chan)
