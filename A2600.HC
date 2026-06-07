@@ -1226,6 +1226,32 @@ I64 A2600SCU32(U8 *data,I64 off)
   return A2600SCU16(data,off)|(A2600SCU16(data,off+2)<<16);
 }
 
+I64 A2600SCWavChannelSample(U8 *data,I64 pos,I64 bits)
+{
+  I64 s;
+
+  if (bits==8)
+    return (data[pos]&0xFF)-0x80;
+  if (bits==16) {
+    s=A2600SCU16(data,pos);
+    if (s&0x8000)
+      s=s-0x10000;
+    return s;
+  }
+  if (bits==24) {
+    s=(data[pos]&0xFF)|((data[pos+1]&0xFF)<<8)|
+          ((data[pos+2]&0xFF)<<16);
+    if (s&0x800000)
+      s=s-0x1000000;
+    return s;
+  }
+
+  s=A2600SCU32(data,pos);
+  if (s&0x80000000)
+    s=s-0x100000000;
+  return s;
+}
+
 Bool A2600SCChunkIs(U8 *data,I64 off,I64 a,I64 b,I64 c,I64 d)
 {
   return data[off]==a && data[off+1]==b && data[off+2]==c && data[off+3]==d;
@@ -1233,24 +1259,12 @@ Bool A2600SCChunkIs(U8 *data,I64 off,I64 a,I64 b,I64 c,I64 d)
 
 I64 A2600SCWavSample(U8 *data,I64 pos,I64 bits,I64 channels)
 {
-  I64 s0,s1;
+  I64 s0,s1,step;
 
-  if (bits==8) {
-    s0=data[pos]&0xFF;
-    if (channels>1) {
-      s1=data[pos+1]&0xFF;
-      s0=(s0+s1)>>1;
-    }
-    return s0-0x80;
-  }
-
-  s0=A2600SCU16(data,pos);
-  if (s0&0x8000)
-    s0=s0-0x10000;
+  step=bits>>3;
+  s0=A2600SCWavChannelSample(data,pos,bits);
   if (channels>1) {
-    s1=A2600SCU16(data,pos+2);
-    if (s1&0x8000)
-      s1=s1-0x10000;
+    s1=A2600SCWavChannelSample(data,pos+step,bits);
     s0=(s0+s1)/2;
   }
   return s0;
@@ -1339,7 +1353,7 @@ Bool A2600SCLoadTapeWav(U8 *path)
   rate=A2600SCU32(data,fmt_pos+4);
   bits=A2600SCU16(data,fmt_pos+14);
   if (fmt_tag!=1 || channels<1 || channels>2 ||
-        (bits!=8 && bits!=16) || rate<=0) {
+        (bits!=8 && bits!=16 && bits!=24 && bits!=32) || rate<=0) {
     Free(data);
     return FALSE;
   }
