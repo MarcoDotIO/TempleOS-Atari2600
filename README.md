@@ -75,6 +75,8 @@ The command above mounts the second IDE disk as `G:`. If you use
 - Player 0 fire/jump: `F`, `Space`, or `Enter`
 - Player 1 movement: `I`, `J`, `K`, `L`
 - Player 1 fire: `M`
+- Keyboard-controller/keypad carts: `1`-`9`, `0`, `*`, and `#`; `P` toggles
+  between left and right controller ports
 - Reset/start: `R` or `F1`
 - Select: `U` or `F2`
 - Color/BW and difficulty switches: `F3` through `F8`

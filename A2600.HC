@@ -71,6 +71,7 @@ otherwise it falls back to the embedded proof ROM.
 
 #define A2600_CTRL_JS                 0
 #define A2600_CTRL_PADDLE             1
+#define A2600_CTRL_KEYPAD             2
 #define A2600_CTRL_DRIVING            3
 #define A2600_CTRL_LIGHTGUN           4
 #define A2600_CTRL_COMPUMATE          5
@@ -576,6 +577,9 @@ I64 a2600_lightgun_mode,a2600_lightgun_port,a2600_lightgun_x,a2600_lightgun_y;
 I64 a2600_lightgun_cycle,a2600_lightgun_line,a2600_lightgun_wrap;
 I64 a2600_lightgun_adjust,a2600_lightgun_vadjust;
 I64 a2600_left_controller,a2600_right_controller;
+I64 a2600_keypad_mode,a2600_keypad_port;
+I64 a2600_keypad0_key,a2600_keypad0_decay,
+    a2600_keypad1_key,a2600_keypad1_decay;
 I64 a2600_controller_lightgun_adjust,a2600_controller_lightgun_vadjust;
 I64 a2600_controller_lightgun_wrap;
 I64 a2600_mindlink_pos[2],a2600_mindlink_shift[2],a2600_mindlink_pins;
@@ -4433,6 +4437,14 @@ U0 A2600PollInput(I64 advance=TRUE)
     if (advance)
       a2600_select_decay--;
   }
+  if (advance && a2600_keypad0_decay>0)
+    a2600_keypad0_decay--;
+  if (a2600_keypad0_decay<=0)
+    a2600_keypad0_key=0;
+  if (advance && a2600_keypad1_decay>0)
+    a2600_keypad1_decay--;
+  if (a2600_keypad1_decay<=0)
+    a2600_keypad1_key=0;
 
   a2600_swcha=(a2600_swcha_out | (0xFF-a2600_swach_dir)) & swcha_pins;
   a2600_swcha=A2600QuadTariPins(a2600_swcha);
@@ -4469,6 +4481,60 @@ U0 A2600PollInput(I64 advance=TRUE)
     a2600_trigger1_decay--;
   if (advance && a2600_booster1_decay>0)
     a2600_booster1_decay--;
+}
+
+I64 A2600Keypad0Row(I64 row)
+{
+  I64 pad_key,row2,col;
+
+  if (!(a2600_keypad_mode&1) || a2600_keypad0_decay<=0)
+    return 0;
+
+  pad_key=a2600_keypad0_key;
+  if (pad_key>=1 && pad_key<=9) {
+    row2=(pad_key-1)%3;
+    col=0x10<<((pad_key-1)/3);
+  } else if (pad_key==10) {
+    row2=1; col=0x80;
+  } else if (pad_key==11) {
+    row2=0; col=0x80;
+  } else if (pad_key==12) {
+    row2=2; col=0x80;
+  } else
+    return 0;
+
+  if (row2!=(row&3))
+    return 0;
+  if (a2600_swcha&col)
+    return 0;
+  return 1;
+}
+
+I64 A2600Keypad1Row(I64 row)
+{
+  I64 pad_key,row2,col;
+
+  if (!(a2600_keypad_mode&2) || a2600_keypad1_decay<=0)
+    return 0;
+
+  pad_key=a2600_keypad1_key;
+  if (pad_key>=1 && pad_key<=9) {
+    row2=(pad_key-1)%3;
+    col=0x01<<((pad_key-1)/3);
+  } else if (pad_key==10) {
+    row2=1; col=0x08;
+  } else if (pad_key==11) {
+    row2=0; col=0x08;
+  } else if (pad_key==12) {
+    row2=2; col=0x08;
+  } else
+    return 0;
+
+  if (row2!=(row&3))
+    return 0;
+  if (a2600_swcha&col)
+    return 0;
+  return 1;
 }
 
 U0 A2600InputLatchVBlank(I64 val)
@@ -5023,6 +5089,16 @@ I64 A2600AnalogINPT(I64 pad)
     return A2600QuadTariINPT(pad);
   if (A2600CompuMatePadPresent(pad))
     return A2600CompuMateINPT(pad);
+  if ((a2600_keypad_mode&1) && (pad&3)<2) {
+    if (A2600Keypad0Row(pad&1))
+      return 0;
+    return 0x80;
+  }
+  if ((a2600_keypad_mode&2) && (pad&3)>=2) {
+    if (A2600Keypad1Row((pad&3)-2))
+      return 0;
+    return 0x80;
+  }
   if (A2600AnalogButtonPadPresent(pad))
     return A2600AnalogButtonINPT(pad);
   if (a2600_analog_dump)
@@ -5054,6 +5130,12 @@ I64 A2600INPT4()
     val=0;
   else
     val=0x80;
+  if (a2600_keypad_mode&1) {
+    if (A2600Keypad0Row(2))
+      val=0;
+    else
+      val=0x80;
+  }
 
   if (a2600_inpt_latch_mode) {
     a2600_inpt4_latch=a2600_inpt4_latch & val;
@@ -5080,6 +5162,12 @@ I64 A2600INPT5()
     val=0;
   else
     val=0x80;
+  if (a2600_keypad_mode&2) {
+    if (A2600Keypad1Row(2))
+      val=0;
+    else
+      val=0x80;
+  }
 
   if (a2600_inpt_latch_mode) {
     a2600_inpt5_latch=a2600_inpt5_latch & val;
@@ -5168,6 +5256,21 @@ Bool A2600CompuMateHandleKey(I64 ch,I64 code)
   return TRUE;
 }
 
+U0 A2600KeypadPress(I64 pad_key)
+{
+  if (a2600_keypad_port&1) {
+    a2600_keypad_mode=a2600_keypad_mode|2;
+    a2600_right_controller=A2600_CTRL_KEYPAD;
+    a2600_keypad1_key=pad_key;
+    a2600_keypad1_decay=60;
+  } else {
+    a2600_keypad_mode=a2600_keypad_mode|1;
+    a2600_left_controller=A2600_CTRL_KEYPAD;
+    a2600_keypad0_key=pad_key;
+    a2600_keypad0_decay=60;
+  }
+}
+
 U0 A2600HandleKey(I64 ch,I64 sc)
 {
   I64 code;
@@ -5177,6 +5280,17 @@ U0 A2600HandleKey(I64 ch,I64 sc)
     return;
   if (A2600CompuMateHandleKey(ch,code))
     return;
+
+  if (ch=='p' || ch=='P')
+    a2600_keypad_port=a2600_keypad_port^1;
+  if (ch>='1' && ch<='9')
+    A2600KeypadPress(ch-'0');
+  if (ch=='0')
+    A2600KeypadPress(10);
+  if (ch=='*')
+    A2600KeypadPress(11);
+  if (ch=='#')
+    A2600KeypadPress(12);
 
   if (ch=='g' || ch=='G') {
     if (a2600_lightgun_mode)
@@ -9314,6 +9428,16 @@ U0 A2600Reset()
   a2600_swchb=a2600_swchb_base;
   A2600SaveKeyResetBus;
   A2600MindlinkReset;
+  a2600_keypad_mode=0;
+  a2600_keypad_port=0;
+  a2600_keypad0_key=0;
+  a2600_keypad0_decay=0;
+  a2600_keypad1_key=0;
+  a2600_keypad1_decay=0;
+  if (a2600_left_controller==A2600_CTRL_KEYPAD)
+    a2600_keypad_mode=a2600_keypad_mode|1;
+  if (a2600_right_controller==A2600_CTRL_KEYPAD)
+    a2600_keypad_mode=a2600_keypad_mode|2;
   a2600_fire0=0;
   a2600_fire1=0;
   A2600AudioReset;
