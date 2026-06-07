@@ -16,9 +16,10 @@ beside a Supercharger ROM. In `.SCT` files, bytes with bit 7 or bit 0 set feed
 a high tape level and zero bytes feed a low tape level. Analog cassette waveform
 decoding is not implemented.
 The TIA audio core creates mixed samples into an internal ring buffer and can
-dump a short raw capture with `A2600AudioCaptureStart` plus
-`A2600AudioCaptureWrite`; TempleOS playback still uses a coarse one-tone
-`Snd()` PC-speaker fallback.
+dump a short mono raw capture with `A2600AudioCaptureStart` plus
+`A2600AudioCaptureWrite`. The same capture pass also records interleaved TIA
+channel bytes with `A2600AudioCaptureWriteStereo` to `AUD2CH.BIN`; TempleOS
+playback still uses a coarse one-tone `Snd()` PC-speaker fallback.
 
 ## Files
 
