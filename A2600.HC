@@ -9191,7 +9191,8 @@ Bool A2600LoadCartPath(U8 *filename)
     Free(data);
     return FALSE;
   }
-  if (size!=2048 && size!=4096 && size!=6144 && size!=8192 && size!=8195 &&
+  if (size!=32 && size!=64 && size!=128 && size!=256 && size!=512 &&
+        size!=1024 && size!=2048 && size!=4096 && size!=6144 && size!=8192 && size!=8195 &&
         size!=10240 && size!=10495 && size!=12288 && size!=16384 && size!=24576 &&
         size!=A2600_FA2_SIZE && size!=29696 && size!=32768 &&
         size!=65536 && size!=131072 && size!=262144 && size!=524288 &&
@@ -9207,9 +9208,10 @@ Bool A2600LoadCartPath(U8 *filename)
   for (i=0;i<A2600_ROM_SIZE;i++)
     a2600_rom[i]=0;
 
-  if (rom_size==2048) {
+  // Stella Cart2K mirrors Sub2K/2K power-of-two images through the full 4K window.
+  if (rom_size<=2048) {
     for (i=0;i<A2600_BANK_SIZE;i++)
-      a2600_rom[i]=data[i&0x07FF];
+      a2600_rom[i]=data[i&(rom_size-1)];
   } else if (rom_size==4096) {
     for (i=0;i<A2600_BANK_SIZE;i++)
       a2600_rom[i]=data[i];
