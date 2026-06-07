@@ -1048,12 +1048,10 @@ Bool A2600SCLoadNumber(I64 num)
 
   if (a2600_cart_size==6144)
     return A2600SCLoadIndex(0);
-  if (!(num&0xFF))
-    return A2600SCLoadIndex(0);
 
   loads=a2600_cart_size/A2600_STARPATH_LOAD_SIZE;
   found=-1;
-  for (i=1;i<loads;i++) {
+  for (i=0;i<loads;i++) {
     if (a2600_rom[(i*A2600_STARPATH_LOAD_SIZE)+0x2005]==(num&0xFF))
       found=i;
   }
