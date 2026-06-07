@@ -546,6 +546,7 @@ I64 a2600_audio_counter,a2600_audio_clock_enable[2],
     a2600_audio_pulse_hold[2],a2600_audio_div_counter[2],
     a2600_audio_pulse_counter[2],a2600_audio_noise_counter[2],
     a2600_audio_sum0,a2600_audio_sum1,a2600_audio_sum_ct;
+I64 a2600_audio_host_sum0,a2600_audio_host_sum1,a2600_audio_host_count;
 I64 a2600_audio_buf[A2600_AUDIO_BUF_SIZE],a2600_audio_buf_r,
     a2600_audio_buf_w,a2600_audio_buf_count,a2600_audio_buf_overrun;
 I64 a2600_audio_capture_count,a2600_audio_capture_stereo_count,
@@ -7050,6 +7051,9 @@ U0 A2600AudioReset()
   a2600_audio_sum0=0;
   a2600_audio_sum1=0;
   a2600_audio_sum_ct=0;
+  a2600_audio_host_sum0=0;
+  a2600_audio_host_sum1=0;
+  a2600_audio_host_count=0;
   A2600AudioQueueReset;
   A2600AudioCaptureClear;
   a2600_audio_capture_active=FALSE;
@@ -7207,6 +7211,13 @@ U0 A2600AudioPhase1Chan(I64 chan)
   a2600_audio_out[chan]=A2600AudioActualVol(chan);
 }
 
+U0 A2600AudioHostSample(I64 left,I64 right)
+{
+  a2600_audio_host_sum0+=left&0x0F;
+  a2600_audio_host_sum1+=right&0x0F;
+  a2600_audio_host_count++;
+}
+
 U0 A2600AudioCreateSample()
 {
   I64 sample0,sample1;
@@ -7229,9 +7240,11 @@ U0 A2600AudioCreateSample()
     a2600_audio_sample=((a2600_dpc_audv&0x0F)<<3)+
           (a2600_audio_out[1]&0x0F);
     A2600AudioCaptureStereoSample(a2600_dpc_audv&0x0F,a2600_audio_out[1]);
+    A2600AudioHostSample(a2600_dpc_audv&0x0F,a2600_audio_out[1]);
   } else {
     a2600_audio_sample=(a2600_audio_out[0]+a2600_audio_out[1])&0xFF;
     A2600AudioCaptureStereoSample(a2600_audio_out[0],a2600_audio_out[1]);
+    A2600AudioHostSample(a2600_audio_out[0],a2600_audio_out[1]);
   }
   A2600AudioQueueSample(a2600_audio_sample);
 }
@@ -7291,12 +7304,20 @@ U0 A2600AudioUpdateHost()
 
   v0=a2600_tia[A2600_AUDV0]&0x0F;
   v1=a2600_tia[A2600_AUDV1]&0x0F;
-  if (a2600_cart_type==A2600_CART_DPC)
-    level0=a2600_dpc_audv&0x0F;
-  else
-    level0=a2600_audio_out[0]&0x0F;
-  level1=a2600_audio_out[1]&0x0F;
-  if (!v0 && !v1 && !level0 && !level1) {
+  if (a2600_audio_host_count>0) {
+    level0=a2600_audio_host_sum0;
+    level1=a2600_audio_host_sum1;
+    a2600_audio_host_sum0=0;
+    a2600_audio_host_sum1=0;
+    a2600_audio_host_count=0;
+  } else {
+    if (a2600_cart_type==A2600_CART_DPC)
+      level0=a2600_dpc_audv&0x0F;
+    else
+      level0=a2600_audio_out[0]&0x0F;
+    level1=a2600_audio_out[1]&0x0F;
+  }
+  if (!level0 && !level1) {
     if (a2600_audio_ona)
       Snd;
     a2600_audio_ona=0;
@@ -7631,7 +7652,6 @@ U0 A2600TIAWrite(I64 tia_addr,I64 val)
       A2600AudioUpdateChan(1);
     else
       A2600AudioUpdateChan(0);
-    A2600AudioUpdateHost;
   }
 
   switch (r) {

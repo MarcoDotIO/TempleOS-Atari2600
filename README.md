@@ -25,7 +25,8 @@ dump a short mono raw capture with `A2600AudioCaptureStart` plus
 `A2600AudioCaptureWriteWav` to `AUDRAW.WAV`. The same capture pass also records
 interleaved TIA channel bytes with `A2600AudioCaptureWriteStereo` to
 `AUD2CH.BIN` or `A2600AudioCaptureWriteStereoWav` to `AUD2CH.WAV`; TempleOS
-playback still uses a coarse one-tone `Snd()` PC-speaker fallback.
+playback still uses a frame-sampled dominant-channel `Snd()` PC-speaker
+fallback rather than live PCM or true two-channel output.
 
 ## Files
 
