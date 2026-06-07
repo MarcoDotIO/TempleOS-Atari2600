@@ -6977,12 +6977,29 @@ U0 A2600AudioCatchUp(I64 target_cycle)
 
 U0 A2600AudioUpdateHost()
 {
-  I64 v0,v1,chan,ona;
+  I64 v0,v1,level0,level1,chan,ona;
   F64 freq;
 
   v0=a2600_tia[A2600_AUDV0]&0x0F;
   v1=a2600_tia[A2600_AUDV1]&0x0F;
-  if (v1>v0)
+  if (a2600_cart_type==A2600_CART_DPC)
+    level0=a2600_dpc_audv&0x0F;
+  else
+    level0=a2600_audio_out[0]&0x0F;
+  level1=a2600_audio_out[1]&0x0F;
+  if (!v0 && !v1 && !level0 && !level1) {
+    if (a2600_audio_ona)
+      Snd;
+    a2600_audio_ona=0;
+    a2600_audio_chan=-1;
+    a2600_audio_freq=0;
+    return;
+  }
+  if (level1>level0)
+    chan=1;
+  else if (level0>level1)
+    chan=0;
+  else if (v1>v0)
     chan=1;
   else
     chan=0;
@@ -9671,6 +9688,7 @@ U0 A2600RunFrame()
     a2600_halt_reason=A2600_HALT_GUARD;
     a2600_halted=TRUE;
   }
+  A2600AudioUpdateHost;
 }
 
 U0 A2600DrawIt(CTask *task,CDC *dc)
