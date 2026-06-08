@@ -3155,11 +3155,13 @@ CatPrint(a2600_fa2_nvram_path,".FA2");
 U0 A2600FA2LoadFlash(U8 *filename)
 {
 U8 *data;
-I64 size,i,limit;
+I64 size,i,limit,reset_flash;
+reset_flash=filename!=a2600_fa2_nvram_path;
+if (reset_flash) {
+A2600FA2SetFlashPath(filename);
 for (i=0;i<256;i++)
 a2600_fa2_flash[i]=0;
-if (filename!=a2600_fa2_nvram_path)
-A2600FA2SetFlashPath(filename);
+}
 if (!a2600_fa2_nvram_path[0])
 return;
 if (!FileFind(a2600_fa2_nvram_path,,FUF_JUST_FILES))
@@ -3176,9 +3178,17 @@ Free(data);
 }
 Bool A2600FA2SaveFlash()
 {
+Bool ok;
 if (!a2600_fa2_nvram_path[0])
 return FALSE;
-return FileWrite(a2600_fa2_nvram_path,a2600_fa2_flash,256)>0;
+ok=FALSE;
+try {
+ok=FileWrite(a2600_fa2_nvram_path,a2600_fa2_flash,256)>0;
+} catch {
+Fs->catch_except=TRUE;
+ok=FALSE;
+}
+return ok;
 }
 I64 A2600DetectCartType(U8 *data,I64 size,I64 crc)
 {
@@ -6005,6 +6015,14 @@ U0 A2600CompuMatePressKey(I64 idx)
 if (idx>=0 && idx<40)
 a2600_compumate_key_decay[idx]=180;
 }
+U0 A2600CompuMatePressFunc()
+{
+a2600_compumate_func_decay=180;
+}
+U0 A2600CompuMatePressShift()
+{
+a2600_compumate_shift_decay=180;
+}
 Bool A2600CompuMateHandleSpecialKey(I64 ch,I64 code)
 {
 I64 idx;
@@ -6019,12 +6037,12 @@ else if (ch=='+') idx=8*4+0;
 else if (ch=='/') idx=9*4+0;
 if (idx>=0) {
 A2600CompuMatePressKey(idx);
-a2600_compumate_shift_decay=180;
+A2600CompuMatePressShift;
 return TRUE;
 }
 if (ch==0x08 || ch==0x7F || code==0x0E) {
 A2600CompuMatePressKey(5*4+3);
-a2600_compumate_func_decay=180;
+A2600CompuMatePressFunc;
 return TRUE;
 }
 return FALSE;
@@ -6037,11 +6055,11 @@ return FALSE;
 if (A2600CompuMateHandleSpecialKey(ch,code))
 return TRUE;
 if (ch=='`') {
-a2600_compumate_func_decay=180;
+A2600CompuMatePressFunc;
 return TRUE;
 }
 if (ch=='~') {
-a2600_compumate_shift_decay=180;
+A2600CompuMatePressShift;
 return TRUE;
 }
 if ((ch=='j' || ch=='J') && a2600_compumate_func_decay>0)
