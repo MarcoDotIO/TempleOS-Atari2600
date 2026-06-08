@@ -5373,6 +5373,13 @@ return pins;
 }
 U0 A2600KidVidFreeSampleData()
 {
+if (!a2600_mem_ready) {
+a2600_kidvid_sample_data=NULL;
+a2600_kidvid_shared_data=NULL;
+a2600_kidvid_sample_size=0;
+a2600_kidvid_shared_size=0;
+return;
+}
 if (a2600_kidvid_sample_data) {
 Free(a2600_kidvid_sample_data);
 a2600_kidvid_sample_data=NULL;
