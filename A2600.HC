@@ -5848,13 +5848,51 @@ a2600_mindlink_pins=0xFF;
 A2600MindlinkNextBit(0);
 A2600MindlinkNextBit(1);
 }
+U0 A2600MindlinkSetTrigger(I64 port,I64 down)
+{
+port=port&1;
+if (down)
+a2600_mindlink_pos[port]=a2600_mindlink_pos[port]|0x4000;
+else
+a2600_mindlink_pos[port]=a2600_mindlink_pos[port]&0xBFFF;
+}
+U0 A2600MindlinkUpdatePort(I64 port)
+{
+I64 pos,trigger=0;
+port=port&1;
+pos=a2600_mindlink_pos[port]&0x3FFF;
+if (port) {
+if (a2600_joy1_left_decay>0)
+pos-=0x0100;
+if (a2600_joy1_right_decay>0)
+pos+=0x0100;
+if (a2600_fire1 || a2600_fire1_decay>0)
+trigger=1;
+} else {
+if (a2600_joy0_left_decay>0)
+pos-=0x0100;
+if (a2600_joy0_right_decay>0)
+pos+=0x0100;
+if (a2600_fire0 || a2600_fire0_decay>0)
+trigger=1;
+}
+if (pos<0x2800)
+pos=0x2800;
+if (pos>0x3800)
+pos=0x3800;
+a2600_mindlink_pos[port]=pos;
+if (trigger)
+A2600MindlinkSetTrigger(port,1);
+}
 U0 A2600MindlinkFrame()
 {
 if (A2600MindlinkPortActive(0)) {
+A2600MindlinkUpdatePort(0);
 a2600_mindlink_shift[0]=1;
 A2600MindlinkNextBit(0);
 }
 if (A2600MindlinkPortActive(1)) {
+A2600MindlinkUpdatePort(1);
 a2600_mindlink_shift[1]=1;
 A2600MindlinkNextBit(1);
 }
@@ -5869,12 +5907,12 @@ A2600MindlinkNextBit(1);
 I64 A2600MindlinkPins(I64 pins)
 {
 if (A2600MindlinkPortActive(0)) {
-pins=pins&0x3F;
+pins=(pins|0x20)&0x3F;
 if (a2600_mindlink_pins&0x80)
 pins=pins|0x80;
 }
 if (A2600MindlinkPortActive(1)) {
-pins=pins&0xF3;
+pins=(pins|0x02)&0xF3;
 if (a2600_mindlink_pins&0x08)
 pins=pins|0x08;
 }
