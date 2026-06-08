@@ -770,7 +770,8 @@ a2600_audio_capture_active,a2600_audio_capture_overrun,
 a2600_audio_capture_stereo_overrun;
 I64 a2600_auto_reset;
 I64 a2600_inpt_latch_mode,a2600_inpt4_latch,a2600_inpt5_latch;
-I64 a2600_analog_dump,a2600_analog_charge_start,a2600_quadtari_dump_cycle;
+I64 a2600_analog_dump,a2600_analog_charge_start,a2600_analog_charge_valid,
+a2600_quadtari_dump_cycle;
 I64 a2600_paddle_pos[4],a2600_paddle_charge[4],a2600_paddle_mode;
 I64 a2600_drive0_count,a2600_drive1_count;
 I64 a2600_trakball_mode,a2600_trakball_port;
@@ -5815,9 +5816,11 @@ a2600_quadtari_dump_cycle=A2600AccessCycle();
 if (val&0x80) {
 a2600_analog_dump=1;
 a2600_analog_charge_start=a2600_tia_cycle;
+a2600_analog_charge_valid=0;
 } else if (a2600_analog_dump) {
 a2600_analog_dump=0;
 a2600_analog_charge_start=a2600_tia_cycle;
+a2600_analog_charge_valid=1;
 }
 }
 Bool A2600QuadTariPadPresent(I64 pad)
@@ -5879,12 +5882,18 @@ return 0x80;
 }
 if (A2600AnalogButtonPadPresent(pad))
 return A2600AnalogButtonINPT(pad);
-if (!a2600_paddle_mode)
-return 0x80;
-if (!A2600PaddlePadPresent(pad))
-return 0x80;
 if (a2600_analog_dump)
 return 0;
+if (!a2600_paddle_mode || !A2600PaddlePadPresent(pad)) {
+if (a2600_analog_charge_valid) {
+elapsed=A2600AccessCycle()-a2600_analog_charge_start;
+if (elapsed<0)
+elapsed=0;
+if (elapsed<A2600_PADDLE_MIN_CYCLES)
+return 0;
+}
+return 0x80;
+}
 elapsed=A2600AccessCycle()-a2600_analog_charge_start;
 if (elapsed<0)
 elapsed=0;
@@ -7047,7 +7056,7 @@ if (a2600_frame_vsync_lines>A2600_FM_MAX_VSYNC_LINES)
 A2600FrameSetState(A2600_FM_WAIT_FRAME_START);
 break;
 case A2600_FM_WAIT_FRAME_START:
-if (a2600_frame_line_state>=A2600FrameYStart())
+if (!a2600_vblank && a2600_frame_line_state>=A2600FrameYStart())
 A2600FrameSetState(A2600_FM_FRAME);
 break;
 case A2600_FM_FRAME:
@@ -7415,6 +7424,10 @@ case A2600_VBLANK:
 A2600AnalogVBlank(val);
 A2600InputLatchVBlank(val);
 a2600_vblank=val&0x02;
+if (!a2600_vblank && a2600_vsync_frame_mode &&
+a2600_frame_state==A2600_FM_WAIT_FRAME_START &&
+a2600_frame_line_state>=A2600FrameYStart())
+A2600FrameSetState(A2600_FM_FRAME);
 if (!a2600_vblank && !a2600_vsync_frame_mode &&
 (old_vblank || a2600_visible_y>=A2600_FB_H)) {
 A2600StartVisibleFrame;
@@ -8096,6 +8109,7 @@ A2600OpRLA(A2600WriteAbsIndexed(lo+(hi<<8),a2600_x),7);
 a2600_cycles+=7;
 break;
 case 0x40:
+A2600Read(a2600_pc);
 A2600Read(0x100+(a2600_sp&0xFF));
 a2600_p=A2600PullData()|0x20;
 lo=A2600PullData(); hi=A2600PullData();
@@ -9265,10 +9279,11 @@ a2600_pc=addr;
 a2600_cycles+=6;
 break;
 case 0x60:
+A2600Read(a2600_pc);
 A2600Read(0x100+(a2600_sp&0xFF));
 lo=A2600PullData(); hi=A2600PullData();
 addr=(lo+(hi<<8))&0xFFFF;
-A2600Read(addr);
+old=A2600Read(addr);
 a2600_pc=(addr+1)&0xFFFF;
 a2600_cycles+=6;
 break;
@@ -10193,6 +10208,7 @@ a2600_inpt4_latch=0x80;
 a2600_inpt5_latch=0x80;
 a2600_analog_dump=0;
 a2600_analog_charge_start=0;
+a2600_analog_charge_valid=0;
 a2600_quadtari_dump_cycle=0;
 for (i=0;i<4;i++)
 A2600PaddleSet(i,128);
