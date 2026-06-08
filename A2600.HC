@@ -881,6 +881,17 @@ if (a2600_access_cycle_active)
 return a2600_access_cycle;
 return a2600_cycles;
 }
+I64 A2600PowerRandByte()
+{
+if (!a2600_power_rng)
+a2600_power_rng=0x6D2B79F5;
+a2600_power_rng=(a2600_power_rng^((a2600_power_rng<<13)&0xFFFFFFFF))&
+0xFFFFFFFF;
+a2600_power_rng=(a2600_power_rng^(a2600_power_rng>>17))&0xFFFFFFFF;
+a2600_power_rng=(a2600_power_rng^((a2600_power_rng<<5)&0xFFFFFFFF))&
+0xFFFFFFFF;
+return (a2600_power_rng>>8)&0xFF;
+}
 U0 A2600EnsureMem()
 {
 if (a2600_mem_ready)
@@ -5871,9 +5882,15 @@ return pins;
 }
 Bool A2600QuadTariUseFirst()
 {
+I64 v;
 if (A2600AccessCycle()-a2600_quadtari_dump_cycle<
 A2600_QUADTARI_STABLE_CYCLES)
+{
+v=A2600PowerRandByte();
+if (v&0x80)
 return TRUE;
+return FALSE;
+}
 return !a2600_analog_dump;
 }
 I64 A2600QuadTariPins(I64 pins)
@@ -10457,14 +10474,7 @@ a2600_power_rng=seed;
 }
 I64 A2600PowerRand()
 {
-if (!a2600_power_rng)
-a2600_power_rng=0x6D2B79F5;
-a2600_power_rng=(a2600_power_rng^((a2600_power_rng<<13)&0xFFFFFFFF))&
-0xFFFFFFFF;
-a2600_power_rng=(a2600_power_rng^(a2600_power_rng>>17))&0xFFFFFFFF;
-a2600_power_rng=(a2600_power_rng^((a2600_power_rng<<5)&0xFFFFFFFF))&
-0xFFFFFFFF;
-return (a2600_power_rng>>8)&0xFF;
+return A2600PowerRandByte();
 }
 U0 A2600Reset()
 {
