@@ -20,6 +20,9 @@ sidecars are RIFF/WAVE PCM, mono or stereo, unsigned 8-bit or signed
 the emulator thresholds the loaded waveform at its sample-range midpoint and
 samples it from emulated CPU cycles using the WAV sample rate. Full arbitrary
 analog cassette cleanup and FSK recovery is not implemented.
+CompuMate carts can also load cassette sidecars next to the ROM. The emulator
+tries a raw `.CAS` byte stream first, then a range-centered RIFF/WAVE PCM
+`.WAV` file using the same 8/16/24/32-bit mono/stereo WAV level loader.
 The TIA audio core creates mixed samples into an internal ring buffer and can
 dump a short mono raw capture with `A2600AudioCaptureStart` plus
 `A2600AudioCaptureWrite` or a mono 8-bit PCM WAV with
