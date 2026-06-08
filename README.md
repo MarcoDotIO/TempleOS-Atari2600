@@ -23,6 +23,11 @@ analog cassette cleanup and FSK recovery is not implemented.
 CompuMate carts can also load cassette sidecars next to the ROM. The emulator
 tries a raw `.CAS` byte stream first, then a range-centered RIFF/WAVE PCM
 `.WAV` file using the same 8/16/24/32-bit mono/stereo WAV level loader.
+KidVid carts can detect the standard `KVS1.WAV`, `KVS2.WAV`, `KVS3.WAV`,
+`KVB1.WAV`, `KVB2.WAV`, `KVB3.WAV`, and `KVSHARED.WAV` sample files beside
+the ROM. Those files currently drive the tape-busy timing around the
+Stella/z26 `KVData` controller bit stream; live mixing of the KidVid narration
+into TempleOS PCM output is still a later audio-output task.
 The TIA audio core creates mixed samples into an internal ring buffer and can
 dump a short mono raw capture with `A2600AudioCaptureStart` plus
 `A2600AudioCaptureWrite` or a mono 8-bit PCM WAV with

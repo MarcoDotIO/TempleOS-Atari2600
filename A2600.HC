@@ -87,6 +87,10 @@
 #define A2600_KIDVID_PAUSE_BITS    288
 #define A2600_KIDVID_END_BITS      336
 #define A2600_KIDVID_NO_WAV_DELAY   32
+#define A2600_KIDVID_SONG_POS_SIZE 328
+#define A2600_KIDVID_SONG_START_SIZE 104
+#define A2600_KIDVID_CLICK_SAMPLES (262*3)
+#define A2600_KIDVID_BUSY_TRAIL_SAMPLES (262*60)
 #define A2600_SAVEKEY_SIZE       32768
 #define A2600_SAVEKEY_PAGE          64
 #define A2600_SAVEKEY_PACKET_MAX   128
@@ -214,6 +218,7 @@ U8 *a2600_fa2_nvram_path,*a2600_compumate_cas,*a2600_compumate_wav;
 U8 *a2600_compumate_cas_path,*a2600_compumate_wav_path,*a2600_savekey_eeprom;
 U8 *a2600_savekey_packet,*a2600_savekey_path;
 U8 *a2600_sc_tape,*a2600_sc_tape_path;
+U8 *a2600_kidvid_cart_path,*a2600_kidvid_sample_path;
 U8 *a2600_audio_capture,*a2600_audio_capture_stereo;
 U8 a2600_prog[A2600_PROG_SIZE]={
 0x78,0xD8,0xA2,0xFF,0x9A,0xE6,0x80,0xA5,
@@ -288,6 +293,49 @@ U8 a2600_kidvid_data[48]={
 0xF6,0x31,0x8C,0x63,0x1E,0xF0,
 0x3F,0xF0,0x00,0x00,0x00,0x00,
 0xF7,0xB1,0x8C,0x63,0x18,0xC0
+};
+I64 a2600_kidvid_first_song[6]={82,0,44,266,124,186};
+U8 a2600_kidvid_song_pos[A2600_KIDVID_SONG_POS_SIZE]={
+11,140,141,14,143,16,136,17,146,19,148,21,136,22,143,23,
+146,14,148,16,146,17,143,19,136,21,148,22,146,23,143,14,
+148,16,136,22,143,23,146,14,148,16,136,9,
+153,26,27,28,8,29,30,26,27,28,8,29,30,26,27,28,
+8,29,30,26,27,28,8,29,30,26,27,28,8,29,30,26,
+27,28,8,29,158,9,
+32,33,34,35,36,37,38,39,40,41,34,42,36,43,40,39,
+38,37,34,43,36,39,40,37,38,43,34,37,36,43,40,39,
+38,37,34,43,36,39,40,37,166,9,
+0,1,45,2,3,46,4,5,47,6,7,48,4,3,49,2,
+1,50,6,7,51,4,5,52,6,1,53,2,7,54,6,5,
+45,2,1,46,4,3,47,2,5,48,4,7,49,6,1,50,
+2,5,51,6,3,52,4,7,53,2,1,54,134,9,
+0,1,56,4,3,57,2,5,58,6,7,59,2,3,60,4,
+1,61,6,7,62,2,5,63,6,1,64,4,7,65,6,5,
+66,4,1,67,2,3,68,6,5,69,2,7,70,4,1,71,
+2,5,72,4,3,73,6,7,74,2,1,75,6,3,76,4,
+5,77,6,7,78,2,3,79,4,1,80,2,7,81,132,9,
+0,1,83,2,3,84,4,5,85,6,7,86,4,3,87,2,
+1,88,6,7,89,2,5,90,6,1,91,4,7,92,6,5,
+93,4,1,94,2,3,95,6,5,96,2,7,97,4,1,98,
+6,5,99,4,3,100,2,7,101,4,1,102,130,9
+};
+I64 a2600_kidvid_song_start[A2600_KIDVID_SONG_START_SIZE]={
+44,980829,1178398,1430063,1691136,1841665,2100386,2283843,
+2629588,2824805,3059116,
+44,164685,395182,750335,962016,1204273,1538258,1801683,
+2086276,2399093,2589606,2801287,3111752,3436329,
+44,778557,1100782,1293648,1493569,1801682,2086275,
+44,686829,893806,1143119,1385376,1578241,1942802,2168595,
+2493172,2662517,3022374,3229351,3720920,
+44,592749,936142,1465343,1787568,2145073,2568434,2822451,
+3045892,3709157,4219542,
+44,303453,703294,1150175,1514736,2208577,2511986,2864787,
+3306964,3864389,4148982,4499431,4824008,5162697,5581354,
+5844779,6162300,6590365,6839678,7225407,7552336,7867505,
+8316738,8608387,8940020,9274005,9593878,
+44,341085,653902,1018463,1265424,1669969,1919282,2227395,
+2535508,3057653,3375174,3704455,4092536,4487673,5026282,
+5416715,5670732,6225805,6736190,7110159,7676992
 };
 I64 a2600_trakball_st_v[4]={0x00,0x10,0x30,0x20};
 I64 a2600_trakball_st_h[4]={0x00,0x80,0xC0,0x40};
@@ -801,7 +849,9 @@ I64 a2600_cart_crc,a2600_power_rng,a2600_power_reset_count;
 I64 a2600_mindlink_pos[2],a2600_mindlink_shift[2],a2600_mindlink_pins;
 I64 a2600_kidvid_id,a2600_kidvid_tape,a2600_kidvid_idx;
 I64 a2600_kidvid_block,a2600_kidvid_block_idx,a2600_kidvid_pins;
-I64 a2600_kidvid_delay;
+I64 a2600_kidvid_delay,a2600_kidvid_files_found,a2600_kidvid_tape_busy;
+I64 a2600_kidvid_song_playing,a2600_kidvid_song_pointer;
+I64 a2600_kidvid_song_frames,a2600_kidvid_beep;
 I64 a2600_savekey_active,a2600_savekey_loaded,a2600_savekey_dirty;
 I64 a2600_savekey_state,a2600_savekey_mdat,a2600_savekey_sdat;
 I64 a2600_savekey_mclk,a2600_savekey_addr_known,a2600_savekey_pptr;
@@ -850,6 +900,8 @@ a2600_savekey_packet=CAlloc(A2600_SAVEKEY_PACKET_MAX);
 a2600_savekey_path=CAlloc(A2600_CART_PATH_MAX);
 a2600_sc_tape=CAlloc(A2600_SC_TAPE_MAX_SIZE);
 a2600_sc_tape_path=CAlloc(A2600_CART_PATH_MAX);
+a2600_kidvid_cart_path=CAlloc(A2600_CART_PATH_MAX);
+a2600_kidvid_sample_path=CAlloc(A2600_CART_PATH_MAX);
 a2600_audio_capture=CAlloc(A2600_AUDIO_CAPTURE_SIZE);
 a2600_audio_capture_stereo=CAlloc(A2600_AUDIO_CAPTURE_STEREO_SIZE);
 a2600_cart_path=CAlloc(A2600_CART_PATH_MAX);
@@ -5312,26 +5364,54 @@ pins=pins|0x03;
 }
 return pins;
 }
-U0 A2600KidVidResetRuntime()
+U0 A2600KidVidStopSamples()
 {
-a2600_kidvid_tape=0;
-a2600_kidvid_idx=0;
-a2600_kidvid_block=0;
-a2600_kidvid_block_idx=A2600_KIDVID_BLOCK_BITS;
-a2600_kidvid_pins=0xFF;
-a2600_kidvid_delay=0;
+a2600_kidvid_files_found=FALSE;
+a2600_kidvid_tape_busy=FALSE;
+a2600_kidvid_song_playing=FALSE;
+a2600_kidvid_song_pointer=0;
+a2600_kidvid_song_frames=0;
+a2600_kidvid_beep=FALSE;
 }
-U0 A2600KidVidClear()
+I64 A2600KidVidVideoHz()
 {
-a2600_kidvid_id=0;
-A2600KidVidResetRuntime;
+if (a2600_tv_format==A2600_TV_PAL ||
+a2600_tv_format==A2600_TV_SECAM ||
+a2600_tv_format==A2600_TV_NTSC50)
+return 50;
+return 60;
 }
-U0 A2600KidVidSetGame(I64 id)
+I64 A2600KidVidAudioStep()
 {
-if (id!=A2600_KIDVID_BBEARS)
-id=A2600_KIDVID_SMURFS;
-a2600_kidvid_id=id;
-a2600_right_controller=A2600_CTRL_KIDVID;
+I64 hz=A2600KidVidVideoHz();
+return (A2600_AUDIO_WAV_HZ+(hz>>1))/hz;
+}
+U0 A2600KidVidBuildSamplePath(U8 *dst,U8 *filename,U8 *leaf)
+{
+I64 i,j,last;
+if (!dst)
+return;
+dst[0]=0;
+if (!filename || !*filename || !leaf || !*leaf)
+return;
+if (StrLen(filename)+StrLen(leaf)>=A2600_CART_PATH_MAX)
+return;
+last=-1;
+for (i=0;filename[i];i++)
+if (filename[i]=='/')
+last=i;
+j=0;
+for (i=0;i<=last;i++) {
+dst[j]=filename[i];
+j++;
+}
+i=0;
+while (leaf[i]) {
+dst[j]=leaf[i];
+i++;
+j++;
+}
+dst[j]=0;
 }
 I64 A2600KidVidTapeIndex()
 {
@@ -5340,6 +5420,141 @@ return 3;
 if (a2600_kidvid_id==A2600_KIDVID_BBEARS)
 return a2600_kidvid_tape+2;
 return a2600_kidvid_tape-1;
+}
+U8 *A2600KidVidSampleLeaf()
+{
+switch (A2600KidVidTapeIndex()) {
+case 0:
+return "KVS3.WAV";
+case 1:
+return "KVS1.WAV";
+case 2:
+return "KVS2.WAV";
+case 3:
+return "KVB3.WAV";
+case 4:
+return "KVB1.WAV";
+case 5:
+return "KVB2.WAV";
+}
+return "KVS1.WAV";
+}
+Bool A2600KidVidSampleExists(U8 *leaf)
+{
+if (!a2600_kidvid_sample_path || !a2600_kidvid_cart_path)
+return FALSE;
+A2600KidVidBuildSamplePath(a2600_kidvid_sample_path,
+a2600_kidvid_cart_path,leaf);
+if (!a2600_kidvid_sample_path[0])
+return FALSE;
+if (FileFind(a2600_kidvid_sample_path,,FUF_JUST_FILES))
+return TRUE;
+return FALSE;
+}
+U0 A2600KidVidOpenSampleFiles()
+{
+I64 tape_idx;
+A2600KidVidStopSamples;
+if (!a2600_kidvid_cart_path)
+return;
+if (!a2600_kidvid_cart_path[0] || !a2600_kidvid_tape)
+return;
+tape_idx=A2600KidVidTapeIndex();
+if (tape_idx<0 || tape_idx>=6)
+return;
+if (!A2600KidVidSampleExists("KVSHARED.WAV"))
+return;
+if (!A2600KidVidSampleExists(A2600KidVidSampleLeaf()))
+return;
+a2600_kidvid_files_found=TRUE;
+a2600_kidvid_song_pointer=a2600_kidvid_first_song[tape_idx];
+}
+U0 A2600KidVidSetCartPath(U8 *filename)
+{
+if (!a2600_kidvid_cart_path)
+return;
+a2600_kidvid_cart_path[0]=0;
+A2600KidVidStopSamples;
+if (!filename || !*filename)
+return;
+if (StrLen(filename)>=A2600_CART_PATH_MAX)
+return;
+StrCpy(a2600_kidvid_cart_path,filename);
+if (a2600_kidvid_tape)
+A2600KidVidOpenSampleFiles;
+}
+U0 A2600KidVidSetNextSong()
+{
+I64 pos,temp,len;
+if (!a2600_kidvid_files_found ||
+a2600_kidvid_song_pointer<0 ||
+a2600_kidvid_song_pointer>=A2600_KIDVID_SONG_POS_SIZE) {
+a2600_kidvid_delay=A2600_KIDVID_NO_WAV_DELAY;
+return;
+}
+pos=a2600_kidvid_song_pos[a2600_kidvid_song_pointer]&0xFF;
+temp=pos&0x7F;
+if (temp<0 || temp+1>=A2600_KIDVID_SONG_START_SIZE) {
+a2600_kidvid_delay=A2600_KIDVID_NO_WAV_DELAY;
+return;
+}
+len=a2600_kidvid_song_start[temp+1]-a2600_kidvid_song_start[temp]-
+A2600_KIDVID_CLICK_SAMPLES;
+if (len<0)
+len=0;
+a2600_kidvid_beep=(pos&0x80)==0;
+a2600_kidvid_song_frames=len;
+a2600_kidvid_song_playing=TRUE;
+a2600_kidvid_tape_busy=TRUE;
+a2600_kidvid_song_pointer++;
+}
+U0 A2600KidVidUpdateBusy()
+{
+I64 step;
+if (!a2600_kidvid_song_playing)
+return;
+step=A2600KidVidAudioStep();
+if (a2600_kidvid_song_frames>step)
+a2600_kidvid_song_frames-=step;
+else {
+a2600_kidvid_song_frames=0;
+a2600_kidvid_song_playing=FALSE;
+a2600_kidvid_tape_busy=FALSE;
+if (!a2600_kidvid_beep && a2600_kidvid_files_found)
+A2600KidVidSetNextSong;
+return;
+}
+if (!a2600_kidvid_beep ||
+a2600_kidvid_song_frames>A2600_KIDVID_BUSY_TRAIL_SAMPLES)
+a2600_kidvid_tape_busy=TRUE;
+else
+a2600_kidvid_tape_busy=FALSE;
+}
+U0 A2600KidVidResetRuntime()
+{
+a2600_kidvid_tape=0;
+a2600_kidvid_idx=0;
+a2600_kidvid_block=0;
+a2600_kidvid_block_idx=A2600_KIDVID_BLOCK_BITS;
+a2600_kidvid_pins=0xFF;
+a2600_kidvid_delay=0;
+A2600KidVidStopSamples;
+}
+U0 A2600KidVidClear()
+{
+a2600_kidvid_id=0;
+if (a2600_kidvid_cart_path)
+a2600_kidvid_cart_path[0]=0;
+if (a2600_kidvid_sample_path)
+a2600_kidvid_sample_path[0]=0;
+A2600KidVidResetRuntime;
+}
+U0 A2600KidVidSetGame(I64 id)
+{
+if (id!=A2600_KIDVID_BBEARS)
+id=A2600_KIDVID_SMURFS;
+a2600_kidvid_id=id;
+a2600_right_controller=A2600_CTRL_KIDVID;
 }
 U0 A2600KidVidSelectTape(I64 tape)
 {
@@ -5358,6 +5573,7 @@ a2600_kidvid_block=0;
 a2600_kidvid_block_idx=A2600_KIDVID_BLOCK_BITS;
 a2600_kidvid_delay=0;
 a2600_kidvid_pins=0xFF;
+A2600KidVidOpenSampleFiles;
 }
 Bool A2600KidVidHandleKey(I64 ch,I64 code)
 {
@@ -5406,7 +5622,7 @@ a2600_kidvid_block>=a2600_kidvid_blocks[tape_idx])
 a2600_kidvid_idx=A2600_KIDVID_END_BITS;
 else {
 a2600_kidvid_idx=A2600_KIDVID_PAUSE_BITS;
-a2600_kidvid_delay=A2600_KIDVID_NO_WAV_DELAY;
+A2600KidVidSetNextSong;
 }
 }
 a2600_kidvid_block++;
@@ -5416,6 +5632,9 @@ U0 A2600KidVidFrame()
 {
 I64 running;
 if (a2600_right_controller!=A2600_CTRL_KIDVID || !a2600_kidvid_tape)
+return;
+A2600KidVidUpdateBusy;
+if (a2600_kidvid_tape_busy)
 return;
 if (a2600_kidvid_delay>0) {
 a2600_kidvid_delay--;
@@ -9930,6 +10149,8 @@ A2600ApplyCartControllerSignatures(data+base,slice);
 A2600ApplyZ26ControllerHints(crc);
 A2600ApplyCartControllerSignatures(data,rom_size);
 }
+if (a2600_right_controller==A2600_CTRL_KIDVID)
+A2600KidVidSetCartPath(filename);
 if (A2600SaveKeyActive())
 A2600SaveKeyLoad(filename);
 if ((size==24576 || size==A2600_FA2_SIZE || size==29696) &&
