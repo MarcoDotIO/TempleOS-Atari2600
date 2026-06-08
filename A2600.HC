@@ -739,6 +739,7 @@ I64 a2600_tv_format;
 I64 a2600_cart_seg0,a2600_cart_seg1,a2600_cart_seg2,a2600_cart_seg3;
 I64 a2600_multicart_index=0;
 I64 a2600_cart_ram_bank,a2600_cart_ram_mode;
+I64 a2600_power_reset_active=FALSE;
 I64 a2600_fa2_flash_busy,a2600_fa2_flash_done_cycle;
 I64 a2600_wd_pending,a2600_wd_pending_cycle;
 I64 a2600_mdm_disabled,a2600_tvboy_disabled;
@@ -1130,6 +1131,16 @@ banks1=A2600Cart1KBanks();
 A2600Cart3EPSetSeg(seg,(val&0x3F)%banks1);
 } else
 A2600Cart3EPSetSeg(seg,A2600Cart1KBanks()+(val&0x3F));
+}
+I64 A2600PowerRand();
+U0 A2600Cart3EPPowerReset()
+{
+I64 banks1;
+banks1=A2600Cart1KBanks();
+a2600_cart_seg0=A2600PowerRand()%banks1;
+a2600_cart_seg1=A2600PowerRand()%banks1;
+a2600_cart_seg2=A2600PowerRand()%banks1;
+a2600_cart_seg3=0;
 }
 U0 A2600DPCInit()
 {
@@ -2311,10 +2322,8 @@ a2600_bank=0;
 return;
 }
 if (a2600_cart_type==A2600_CART_3EP) {
-a2600_cart_seg0=0;
-a2600_cart_seg1=0;
-a2600_cart_seg2=0;
-a2600_cart_seg3=0;
+if (a2600_power_reset_active)
+A2600Cart3EPPowerReset;
 a2600_bank=0;
 return;
 }
@@ -10460,6 +10469,7 @@ return (a2600_power_rng>>8)&0xFF;
 U0 A2600Reset()
 {
 I64 i;
+a2600_power_reset_active=FALSE;
 A2600LoadROM;
 a2600_cycles=0;
 a2600_access_cycle_active=0;
@@ -10515,7 +10525,9 @@ a2600_pa7_sync1=1;
 a2600_pa7_last=1;
 a2600_swach_dir=0;
 a2600_swbch_dir=0;
+a2600_power_reset_active=TRUE;
 A2600CartResetBanks;
+a2600_power_reset_active=FALSE;
 a2600_p0_x=32;
 a2600_p1_x=96;
 a2600_m0_x=32;
