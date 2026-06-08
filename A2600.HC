@@ -1132,11 +1132,16 @@ A2600DPCUpdateAUDV;
 }
 U0 A2600DPCClockRandom()
 {
-a2600_dpc_sreg=((((((a2600_dpc_sreg&0x80)>>7)^
-((a2600_dpc_sreg&0x20)>>5))^
-(((a2600_dpc_sreg&0x10)>>4)^
-((a2600_dpc_sreg&0x08)>>3)))^1) |
-(a2600_dpc_sreg<<1))&0xFF;
+I64 old_sreg;
+I64 feedback;
+old_sreg=a2600_dpc_sreg&0xFF;
+feedback=(old_sreg>>7)&1;
+feedback+=((old_sreg>>5)&1);
+feedback+=((old_sreg>>4)&1);
+feedback+=((old_sreg>>3)&1);
+feedback++;
+feedback=feedback&1;
+a2600_dpc_sreg=((old_sreg<<1)|feedback)&0xFF;
 }
 I64 A2600DPCReadRandom()
 {
@@ -1229,7 +1234,6 @@ return;
 if (r>=0x30 && r<0x38)
 a2600_dpc_sreg=1;
 }
-Bool A2600SCLoadIndex(I64 load,Bool apply_scheme=TRUE);
 U0 A2600SCSetScheme()
 {
 I64 s;
@@ -1274,20 +1278,26 @@ for (i=0;i<len;i++)
 sum=(sum+(a2600_rom[base+i]&0xFF))&0xFF;
 return sum;
 }
-Bool A2600SCLoadIndex(I64 load,Bool apply_scheme=TRUE)
+U0 A2600SCSt(I64 lo,I64 hi)
 {
-I64 base,pagecount,i,j,pagebyte,pageadr,pagesum,control;
+a2600_sc_start=hi*256+lo;
+}
+Bool A2600SCLoadIndex(I64 load,I64 apply_scheme)
+{
+I64 base,pagecount,i,j,pagebyte,pageadr,pagesum,control,idx,pagebase,lo,hi;
 if (a2600_cart_size==6144) {
 a2600_sc_header_ok=TRUE;
 a2600_sc_page_ok=TRUE;
 a2600_sc_last_load=load;
 for (i=0;i<0x1800;i++)
 a2600_cart_ram[i]=a2600_rom[i];
-a2600_sc_start=a2600_rom[0x17FC]+(a2600_rom[0x17FD]<<8);
-control=0x0D;
-a2600_ram[0x7E]=a2600_sc_start&0xFF;
-a2600_ram[0x7F]=(a2600_sc_start>>8)&0xFF;
-a2600_ram[0]=control&0xFF;
+lo=a2600_rom[0x17FC];
+hi=a2600_rom[0x17FD];
+A2600SCSt(lo,hi);
+control=13;
+a2600_ram[0x7E]=lo;
+a2600_ram[0x7F]=hi;
+a2600_ram[0]=control;
 if (apply_scheme) {
 a2600_sc_control=control;
 A2600SCSetScheme;
@@ -1300,46 +1310,62 @@ return FALSE;
 a2600_sc_header_ok=(A2600SCSum(base+0x2000,8)==0x55);
 a2600_sc_page_ok=TRUE;
 a2600_sc_last_load=load;
-pagecount=a2600_rom[base+0x2003]&0xFF;
+idx=base+0x2003;
+pagecount=a2600_rom[idx];
 if (pagecount>32)
 pagecount=32;
 for (i=0;i<pagecount;i++) {
-pagebyte=a2600_rom[base+0x2010+i]&0xFF;
-pagesum=(A2600SCSum(base+(i*256),256)+pagebyte+
-(a2600_rom[base+0x2040+i]&0xFF))&0xFF;
+idx=base+0x2010+i;
+pagebyte=a2600_rom[idx];
+pagebase=base+(i*256);
+idx=base+0x2040+i;
+pagesum=A2600SCSum(pagebase,256);
+pagesum=pagesum+pagebyte;
+pagesum=pagesum+a2600_rom[idx];
+pagesum=pagesum&0xFF;
 if (pagesum!=0x55)
 a2600_sc_page_ok=FALSE;
-pageadr=((pagebyte&3)*0x800)+(((pagebyte&0x1F)>>2)*256);
+pageadr=pagebyte&3;
+pageadr=pageadr*0x800;
+pageadr=pageadr+(((pagebyte&0x1F)/4)*256);
 if (pageadr+256<=0x1800) {
-for (j=0;j<256;j++)
-a2600_cart_ram[pageadr+j]=a2600_rom[base+(i*256)+j];
+for (j=0;j<256;j++) {
+idx=pagebase+j;
+a2600_cart_ram[pageadr+j]=a2600_rom[idx];
 }
 }
-a2600_sc_start=a2600_rom[base+0x2000]+(a2600_rom[base+0x2001]<<8);
-control=a2600_rom[base+0x2002]&0xFF;
-a2600_ram[0x7E]=a2600_rom[base+0x2000]&0xFF;
-a2600_ram[0x7F]=a2600_rom[base+0x2001]&0xFF;
-a2600_ram[0]=control&0xFF;
+}
+idx=base+0x2000;
+lo=a2600_rom[idx];
+idx=base+0x2001;
+hi=a2600_rom[idx];
+A2600SCSt(lo,hi);
+idx=base+0x2002;
+control=a2600_rom[idx];
+a2600_ram[0x7E]=lo;
+a2600_ram[0x7F]=hi;
+a2600_ram[0]=control;
 if (apply_scheme) {
 a2600_sc_control=control;
 A2600SCSetScheme;
 }
-return a2600_sc_start!=0;
+if (a2600_sc_start==0)
+return FALSE;
+return TRUE;
 }
-Bool A2600SCLoadNumber(I64 num,Bool apply_scheme=TRUE)
+I64 A2600SCFindLoad(I64 num)
 {
-I64 i,loads,found;
+I64 i,idx,loads,found;
 if (a2600_cart_size==6144)
-return A2600SCLoadIndex(0,apply_scheme);
+return 0;
 loads=a2600_cart_size/A2600_STARPATH_LOAD_SIZE;
 found=-1;
 for (i=0;i<loads;i++) {
-if (a2600_rom[(i*A2600_STARPATH_LOAD_SIZE)+0x2005]==(num&0xFF))
+idx=i*A2600_STARPATH_LOAD_SIZE;
+if (a2600_rom[idx+0x2005]==(num&0xFF))
 found=i;
 }
-if (found<0)
-return FALSE;
-return A2600SCLoadIndex(found,apply_scheme);
+return found;
 }
 U0 A2600SCInit()
 {
@@ -1359,7 +1385,7 @@ a2600_sc_tape_pos=0;
 a2600_sc_tape_cycle0=A2600AccessCycle();
 for (i=0;i<0x1800;i++)
 a2600_cart_ram[i]=0x52;
-A2600SCLoadIndex(0);
+A2600SCLoadIndex(0,TRUE);
 a2600_ram[0]=a2600_sc_control|0x40;
 }
 U0 A2600SCObserveAddr(I64 a)
@@ -1402,13 +1428,16 @@ a2600_sc_addr_count=7;
 }
 Bool A2600SCJAM()
 {
-I64 hot;
+I64 hot,found;
 if (a2600_cart_type!=A2600_CART_AR)
 return FALSE;
 hot=a2600_last_pc&0x1FFF;
 if (hot==0x1FF0) {
 a2600_sc_control=a2600_ram[0x7A];
-if (!A2600SCLoadNumber(a2600_sc_control))
+found=A2600SCFindLoad(a2600_sc_control);
+if (found<0)
+return FALSE;
+if (!A2600SCLoadIndex(found,TRUE))
 return FALSE;
 a2600_pc=a2600_sc_start;
 a2600_ram[0]=a2600_sc_control|0x40;
@@ -1417,7 +1446,7 @@ a2600_cycles+=2;
 return TRUE;
 }
 if (hot==0x1FF1) {
-if (!A2600SCLoadIndex(0))
+if (!A2600SCLoadIndex(0,TRUE))
 return FALSE;
 a2600_pc=a2600_sc_start;
 a2600_ram[0]=a2600_sc_control|0x40;
@@ -1810,6 +1839,16 @@ a2600_compumate_save_seen_signal=FALSE;
 a2600_compumate_save_cycles_per_bit=0;
 for (i=0;i<A2600_CM_CAS_FRAME_BITS;i++)
 a2600_compumate_save_bit_trans[i]=0;
+}
+U0 A2600CompuMateReset()
+{
+I64 i;
+a2600_compumate_swcha=0xFF;
+a2600_compumate_column=0;
+for (i=0;i<40;i++)
+a2600_compumate_key_decay[i]=0;
+a2600_compumate_func_decay=0;
+a2600_compumate_shift_decay=0;
 }
 U0 A2600CompuMateResetCassette()
 {
@@ -3308,7 +3347,7 @@ A2600MFAAccess(a,val);
 }
 I64 A2600ReadCart(I64 a)
 {
-I64 off,banks1,banks2,idx,seg,segval,sub,slice;
+I64 off,banks1,banks2,idx,seg,segval,sub,slice,found;
 A2600WDMaybeSwitch;
 A2600CartHot(a);
 off=a&0x0FFF;
@@ -3331,8 +3370,11 @@ return A2600Bus(a2600_cart_ram[off&0x07FF]);
 if (a2600_cart_type==A2600_CART_AR) {
 if (off==0x0FF9)
 return A2600SCReadAudioInput;
-if ((a&0x1FFF)==0x1850 && a2600_sc_slice1==0x1800)
-A2600SCLoadNumber(a2600_ram[0],FALSE);
+if ((a&0x1FFF)==0x1850 && a2600_sc_slice1==0x1800) {
+found=A2600SCFindLoad(a2600_ram[0]);
+if (found>=0)
+A2600SCLoadIndex(found,FALSE);
+}
 if (off&0x0800)
 idx=a2600_sc_slice1+(off&0x07FF);
 else
