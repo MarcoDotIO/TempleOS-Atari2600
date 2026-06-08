@@ -91,6 +91,7 @@
 #define A2600_KIDVID_SONG_START_SIZE 104
 #define A2600_KIDVID_CLICK_SAMPLES (262*3)
 #define A2600_KIDVID_BUSY_TRAIL_SAMPLES (262*60)
+#define A2600_KIDVID_WAV_MAX_SIZE 10485760
 #define A2600_SAVEKEY_SIZE       32768
 #define A2600_SAVEKEY_PAGE          64
 #define A2600_SAVEKEY_PACKET_MAX   128
@@ -219,6 +220,7 @@ U8 *a2600_compumate_cas_path,*a2600_compumate_wav_path,*a2600_savekey_eeprom;
 U8 *a2600_savekey_packet,*a2600_savekey_path;
 U8 *a2600_sc_tape,*a2600_sc_tape_path;
 U8 *a2600_kidvid_cart_path,*a2600_kidvid_sample_path;
+U8 *a2600_kidvid_sample_data,*a2600_kidvid_shared_data;
 U8 *a2600_audio_capture,*a2600_audio_capture_stereo;
 U8 a2600_prog[A2600_PROG_SIZE]={
 0x78,0xD8,0xA2,0xFF,0x9A,0xE6,0x80,0xA5,
@@ -852,6 +854,9 @@ I64 a2600_kidvid_block,a2600_kidvid_block_idx,a2600_kidvid_pins;
 I64 a2600_kidvid_delay,a2600_kidvid_files_found,a2600_kidvid_tape_busy;
 I64 a2600_kidvid_song_playing,a2600_kidvid_song_pointer;
 I64 a2600_kidvid_song_frames,a2600_kidvid_beep;
+I64 a2600_kidvid_sample_size,a2600_kidvid_shared_size;
+I64 a2600_kidvid_audio_pos,a2600_kidvid_audio_end;
+I64 a2600_kidvid_audio_shared,a2600_kidvid_audio_prev,a2600_kidvid_audio_odd;
 I64 a2600_savekey_active,a2600_savekey_loaded,a2600_savekey_dirty;
 I64 a2600_savekey_state,a2600_savekey_mdat,a2600_savekey_sdat;
 I64 a2600_savekey_mclk,a2600_savekey_addr_known,a2600_savekey_pptr;
@@ -4600,6 +4605,7 @@ a2600_audio_host_sum0+=left&0x0F;
 a2600_audio_host_sum1+=right&0x0F;
 a2600_audio_host_count++;
 }
+extern I64 A2600KidVidMixSample(I64 sample);
 U0 A2600AudioCreateSample()
 {
 I64 sample0,sample1;
@@ -4625,6 +4631,7 @@ a2600_audio_sample=(a2600_audio_out[0]+a2600_audio_out[1])&0xFF;
 A2600AudioCaptureStereoSample(a2600_audio_out[0],a2600_audio_out[1]);
 A2600AudioHostSample(a2600_audio_out[0],a2600_audio_out[1]);
 }
+a2600_audio_sample=A2600KidVidMixSample(a2600_audio_sample);
 A2600AudioQueueSample(a2600_audio_sample);
 }
 U0 A2600AudioTick()
@@ -5364,14 +5371,33 @@ pins=pins|0x03;
 }
 return pins;
 }
+U0 A2600KidVidFreeSampleData()
+{
+if (a2600_kidvid_sample_data) {
+Free(a2600_kidvid_sample_data);
+a2600_kidvid_sample_data=NULL;
+}
+if (a2600_kidvid_shared_data) {
+Free(a2600_kidvid_shared_data);
+a2600_kidvid_shared_data=NULL;
+}
+a2600_kidvid_sample_size=0;
+a2600_kidvid_shared_size=0;
+}
 U0 A2600KidVidStopSamples()
 {
+A2600KidVidFreeSampleData;
 a2600_kidvid_files_found=FALSE;
 a2600_kidvid_tape_busy=FALSE;
 a2600_kidvid_song_playing=FALSE;
 a2600_kidvid_song_pointer=0;
 a2600_kidvid_song_frames=0;
 a2600_kidvid_beep=FALSE;
+a2600_kidvid_audio_pos=0;
+a2600_kidvid_audio_end=0;
+a2600_kidvid_audio_shared=FALSE;
+a2600_kidvid_audio_prev=0x80;
+a2600_kidvid_audio_odd=0;
 }
 I64 A2600KidVidVideoHz()
 {
@@ -5451,6 +5477,40 @@ if (FileFind(a2600_kidvid_sample_path,,FUF_JUST_FILES))
 return TRUE;
 return FALSE;
 }
+Bool A2600KidVidLoadRawWav(U8 *leaf,Bool shared)
+{
+U8 *data;
+I64 size;
+if (!a2600_kidvid_sample_path || !a2600_kidvid_cart_path)
+return FALSE;
+A2600KidVidBuildSamplePath(a2600_kidvid_sample_path,
+a2600_kidvid_cart_path,leaf);
+if (!a2600_kidvid_sample_path[0])
+return FALSE;
+if (!FileFind(a2600_kidvid_sample_path,,FUF_JUST_FILES))
+return FALSE;
+data=FileRead(a2600_kidvid_sample_path,&size);
+if (!data)
+return FALSE;
+if (size<44 || size>A2600_KIDVID_WAV_MAX_SIZE ||
+data[0]!='R' || data[1]!='I' || data[2]!='F' || data[3]!='F' ||
+data[8]!='W' || data[9]!='A' || data[10]!='V' || data[11]!='E') {
+Free(data);
+return FALSE;
+}
+if (shared) {
+if (a2600_kidvid_shared_data)
+Free(a2600_kidvid_shared_data);
+a2600_kidvid_shared_data=data;
+a2600_kidvid_shared_size=size;
+} else {
+if (a2600_kidvid_sample_data)
+Free(a2600_kidvid_sample_data);
+a2600_kidvid_sample_data=data;
+a2600_kidvid_sample_size=size;
+}
+return TRUE;
+}
 U0 A2600KidVidOpenSampleFiles()
 {
 I64 tape_idx;
@@ -5462,10 +5522,12 @@ return;
 tape_idx=A2600KidVidTapeIndex();
 if (tape_idx<0 || tape_idx>=6)
 return;
-if (!A2600KidVidSampleExists("KVSHARED.WAV"))
+if (!A2600KidVidLoadRawWav("KVSHARED.WAV",TRUE))
 return;
-if (!A2600KidVidSampleExists(A2600KidVidSampleLeaf()))
+if (!A2600KidVidLoadRawWav(A2600KidVidSampleLeaf(),FALSE)) {
+A2600KidVidStopSamples;
 return;
+}
 a2600_kidvid_files_found=TRUE;
 a2600_kidvid_song_pointer=a2600_kidvid_first_song[tape_idx];
 }
@@ -5485,7 +5547,7 @@ A2600KidVidOpenSampleFiles;
 }
 U0 A2600KidVidSetNextSong()
 {
-I64 pos,temp,len;
+I64 pos,temp,len,size;
 if (!a2600_kidvid_files_found ||
 a2600_kidvid_song_pointer<0 ||
 a2600_kidvid_song_pointer>=A2600_KIDVID_SONG_POS_SIZE) {
@@ -5498,19 +5560,31 @@ if (temp<0 || temp+1>=A2600_KIDVID_SONG_START_SIZE) {
 a2600_kidvid_delay=A2600_KIDVID_NO_WAV_DELAY;
 return;
 }
-len=a2600_kidvid_song_start[temp+1]-a2600_kidvid_song_start[temp]-
-A2600_KIDVID_CLICK_SAMPLES;
+a2600_kidvid_audio_shared=temp<10;
+if (a2600_kidvid_audio_shared)
+size=a2600_kidvid_shared_size;
+else
+size=a2600_kidvid_sample_size;
+a2600_kidvid_audio_pos=a2600_kidvid_song_start[temp];
+a2600_kidvid_audio_end=a2600_kidvid_song_start[temp+1];
+if (a2600_kidvid_audio_end>size)
+a2600_kidvid_audio_end=size;
+len=a2600_kidvid_audio_end-a2600_kidvid_audio_pos;
 if (len<0)
 len=0;
 a2600_kidvid_beep=(pos&0x80)==0;
 a2600_kidvid_song_frames=len;
 a2600_kidvid_song_playing=TRUE;
 a2600_kidvid_tape_busy=TRUE;
+a2600_kidvid_audio_prev=0x80;
+a2600_kidvid_audio_odd=0;
 a2600_kidvid_song_pointer++;
 }
 U0 A2600KidVidUpdateBusy()
 {
 I64 step;
+if (a2600_kidvid_files_found)
+return;
 if (!a2600_kidvid_song_playing)
 return;
 step=A2600KidVidAudioStep();
@@ -5529,6 +5603,55 @@ a2600_kidvid_song_frames>A2600_KIDVID_BUSY_TRAIL_SAMPLES)
 a2600_kidvid_tape_busy=TRUE;
 else
 a2600_kidvid_tape_busy=FALSE;
+}
+I64 A2600KidVidNextSampleByte()
+{
+U8 *data;
+I64 size,b;
+if (!a2600_kidvid_files_found || !a2600_kidvid_song_playing)
+return 0x80;
+a2600_kidvid_audio_odd=1-a2600_kidvid_audio_odd;
+if (!a2600_kidvid_audio_odd)
+return a2600_kidvid_audio_prev&0xFF;
+if (a2600_kidvid_audio_shared) {
+data=a2600_kidvid_shared_data;
+size=a2600_kidvid_shared_size;
+} else {
+data=a2600_kidvid_sample_data;
+size=a2600_kidvid_sample_size;
+}
+if (!data || a2600_kidvid_song_frames<=0 ||
+a2600_kidvid_audio_pos<0 ||
+a2600_kidvid_audio_pos>=a2600_kidvid_audio_end ||
+a2600_kidvid_audio_pos>=size) {
+b=0x80;
+a2600_kidvid_song_frames=0;
+} else {
+b=data[a2600_kidvid_audio_pos]&0xFF;
+a2600_kidvid_audio_pos++;
+a2600_kidvid_song_frames--;
+}
+a2600_kidvid_audio_prev=b&0xFF;
+if (a2600_kidvid_song_frames<=0) {
+a2600_kidvid_song_playing=FALSE;
+a2600_kidvid_tape_busy=FALSE;
+if (!a2600_kidvid_beep && a2600_kidvid_files_found)
+A2600KidVidSetNextSong;
+} else if (!a2600_kidvid_beep ||
+a2600_kidvid_song_frames>A2600_KIDVID_BUSY_TRAIL_SAMPLES)
+a2600_kidvid_tape_busy=TRUE;
+else
+a2600_kidvid_tape_busy=FALSE;
+return b&0xFF;
+}
+I64 A2600KidVidMixSample(I64 sample)
+{
+I64 kid;
+if (!a2600_kidvid_files_found || !a2600_kidvid_song_playing ||
+a2600_right_controller!=A2600_CTRL_KIDVID)
+return sample&0xFF;
+kid=A2600KidVidNextSampleByte();
+return ((sample>>1)+kid-0x80)&0xFF;
 }
 U0 A2600KidVidResetRuntime()
 {
